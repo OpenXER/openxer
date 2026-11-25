@@ -1,0 +1,470 @@
+# The sample project a new workspace starts on (xer/src/sample_project.rs).
+# Everything here is invented: the plant, the people, the vendors, the
+# quantities, the rates and the dates. Fields are separated by " | ".
+#
+# Durations are working days of the activity's calendar: 5 is the 5-day
+# 8-hour office calendar, 6 the 6-day 10-hour construction calendar and 7 the
+# 7-day 10-hour calendar for concrete curing and the plant outage.
+# A duration of "start" or "finish" makes a milestone.
+# Predecessors: ID (finish to start), "ID SS2" (start to start, 2 days lag on
+# the predecessor's calendar), "ID FF1", "ID FS1".
+# Resources: "ID units" where units is the crew size (units per hour) for
+# labor and nonlabor resources and the total quantity for materials. No
+# value may hold a "|".
+
+## project
+RIVERBEND | Riverbend Process Water Upgrade | 2026-06-01 07:00
+
+## holidays
+2026-07-03 | 2026-09-07 | 2026-11-26 | 2026-11-27 | 2026-12-24 | 2026-12-25
+2027-01-01 | 2027-05-31 | 2027-07-05
+
+## units
+CY | Cubic Yard
+TON | Ton
+BAG | Bag
+LF | Linear Foot
+
+## roles
+STAFF | Project Staff
+SUPV | Field Supervision
+CRAFT | Skilled Craft
+LABOR | General Labor
+
+## accounts
+1000 | Project Management and Engineering
+2000 | Direct Craft Labor
+3000 | Construction Equipment
+4000 | Permanent Materials
+5000 | Subcontracts and Vendor Services
+6000 | Permits, Freight and Other Expenses
+
+## expense categories
+Permits and Fees
+Freight
+Vendor Services
+Testing and Inspection
+
+## topics
+Scope
+Basis and Assumptions
+Constraints and Access
+Safety
+Quality and Inspection
+Field Notes
+Change Notes
+
+# id | name | type (labor, nonlabor, material) | unit | calendar | rate | limit | role | account
+## resources
+PM | Project Manager | labor | | 5 | 135 | 1 | STAFF | 1000
+PE | Project Engineer | labor | | 5 | 110 | 2 | STAFF | 1000
+ENGR | Design Engineer | labor | | 5 | 125 | 4 | STAFF | 1000
+BUYER | Buyer and Expeditor | labor | | 5 | 85 | 1 | STAFF | 1000
+SUPT | Construction Superintendent | labor | | 6 | 115 | 1 | SUPV | 2000
+GF | General Foreman | labor | | 6 | 98 | 3 | SUPV | 2000
+FE | Field Engineer | labor | | 6 | 95 | 2 | SUPV | 2000
+QC | Quality Control Inspector | labor | | 6 | 95 | 2 | SUPV | 2000
+LAB | Laborer | labor | | 6 | 58 | 8 | LABOR | 2000
+CARP | Carpenter | labor | | 6 | 72 | 6 | CRAFT | 2000
+IW | Ironworker | labor | | 6 | 82 | 7 | CRAFT | 2000
+PF | Pipefitter | labor | | 6 | 88 | 14 | CRAFT | 2000
+WLD | Pipe Welder | labor | | 6 | 92 | 6 | CRAFT | 2000
+ELEC | Electrician | labor | | 6 | 86 | 10 | CRAFT | 2000
+INST | Instrument Technician | labor | | 6 | 90 | 4 | CRAFT | 2000
+MW | Millwright | labor | | 6 | 85 | 4 | CRAFT | 2000
+PNT | Painter | labor | | 6 | 66 | 3 | CRAFT | 2000
+INSUL | Insulator | labor | | 6 | 70 | 4 | CRAFT | 2000
+OPR | Equipment Operator | labor | | 6 | 80 | 3 | CRAFT | 2000
+CXE | Commissioning Engineer | labor | | 6 | 120 | 2 | STAFF | 1000
+CR90 | Crane, 90 Ton Hydraulic | nonlabor | | 6 | 310 | 1 | | 3000
+CR250 | Crane, 250 Ton Crawler | nonlabor | | 6 | 650 | 1 | | 3000
+LIFT | Manlift, 60 Foot | nonlabor | | 6 | 45 | 5 | | 3000
+WMACH | Welding Machine | nonlabor | | 6 | 18 | 6 | | 3000
+EXC | Excavator | nonlabor | | 6 | 150 | 1 | | 3000
+HYD | Hydrotest Pump and Gauges | nonlabor | | 6 | 35 | 1 | | 3000
+CONC | Ready-Mix Concrete | material | CY | 6 | 185 | | | 4000
+REBAR | Reinforcing Steel | material | TON | 6 | 1450 | | | 4000
+GROUT | Non-Shrink Grout | material | BAG | 6 | 42 | | | 4000
+CABLE | Power Cable, 600 Volt | material | LF | 6 | 9.5 | | | 4000
+
+# code | parent | name
+## wbs
+PM | | Project Management
+ENG | | Engineering Deliverables
+CS | ENG | Civil and Structural Drawings
+ME | ENG | Piping and Mechanical Drawings
+EI | ENG | Electrical and Instrument Drawings
+PROC | | Procurement
+LL | PROC | Long-Lead Equipment
+BM | PROC | Bulk Materials
+CONST | | Construction
+SITE | CONST | Site Preparation and Temporary Facilities
+FAB | CONST | Piping Fabrication Shop
+A100 | CONST | Area 100 Pump Station
+A100.DEMO | A100 | Demolition
+A100.CIVIL | A100 | Civil and Structural
+A100.EQUIP | A100 | Equipment
+A100.PIPE | A100 | Piping
+A100.ELEC | A100 | Electrical
+A100.INST | A100 | Instrumentation
+A100.PAINT | A100 | Paint and Insulation
+A200 | CONST | Area 200 Pipe Rack
+A200.CIVIL | A200 | Civil and Structural
+A200.PIPE | A200 | Piping
+A200.ELEC | A200 | Electrical
+A200.PAINT | A200 | Paint and Insulation
+A300 | CONST | Area 300 Heat Exchanger and Header Tie-ins
+A300.DEMO | A300 | Demolition
+A300.CIVIL | A300 | Civil and Structural
+A300.EQUIP | A300 | Equipment
+A300.PIPE | A300 | Piping
+A300.TIE | A300 | Header Tie-ins (Plant Outage)
+A300.ELEC | A300 | Electrical
+A300.INST | A300 | Instrumentation
+A300.PAINT | A300 | Paint and Insulation
+A400 | CONST | Area 400 Electrical Room
+A400.CIVIL | A400 | Civil and Structural
+A400.ELEC | A400 | Power Distribution
+COMM | | Commissioning and Turnover
+MC | COMM | Mechanical Completion
+SU | COMM | Commissioning and Startup
+TO | COMM | Turnover and Closeout
+
+# id | wbs | calendar | duration | name | predecessors | resources
+## activities
+MS0000 | PM | 5 | start | Notice to proceed | |
+PM0100 | PM | 5 | 2 | Hold project kickoff meeting with owner and plant operations | MS0000 | PM 1, PE 1, SUPT 1
+PM0110 | PM | 5 | 10 | Submit project schedule and cost breakdown for owner approval | PM0100 | PM 0.5, PE 1
+PM0120 | PM | 5 | 12 | Prepare and submit site safety plan and job hazard analyses | PM0100 | PE 0.5, SUPT 1
+PM0130 | PM | 5 | 25 | Obtain county building and excavation permits | PM0100 | PE 0.5
+PM0140 | PM | 5 | 1 | Hold pre-construction safety meeting with plant operations | PM0120 | PM 1, SUPT 1, GF 1
+EN0100 | CS | 5 | 25 | Design pump foundations, rack footings and equipment pads | PM0100 | ENGR 2, PE 0.5
+EN0110 | CS | 5 | 5 | Review soil report for pump foundation bearing pressure | EN0100 SS5 | ENGR 1
+EN0120 | CS | 5 | 10 | Resolve owner comments on civil and structural drawings | EN0100, EN0110 | ENGR 1
+EN0130 | CS | 5 | finish | Civil and structural drawings issued for construction | EN0120 |
+EN0200 | ME | 5 | 35 | Design pump station, pipe rack and heat exchanger piping | PM0100 | ENGR 2, PE 0.5
+EN0210 | ME | 5 | 10 | Resolve owner comments on piping drawings | EN0200 | ENGR 1
+EN0220 | ME | 5 | 8 | Prepare piping isometrics and tie-in package for the outage | EN0210 | ENGR 1.5
+EN0230 | ME | 5 | 5 | Prepare hydrotest packages with test limits and test pressures | EN0220 | ENGR 1, QC 0.5
+EN0240 | ME | 5 | finish | Piping drawings issued for construction | EN0220 |
+EN0300 | EI | 5 | 30 | Design one-line diagram, motor control center schedule and cable schedule | PM0100 | ENGR 1.5
+EN0310 | EI | 5 | 25 | Design instrument loop drawings, instrument index and hookups | EN0200 SS15 | ENGR 1
+EN0320 | EI | 5 | 10 | Resolve owner comments on electrical and instrument drawings | EN0300, EN0310 | ENGR 1
+EN0330 | EI | 5 | 5 | Prepare cable pull cards and termination schedules | EN0320 | ENGR 1
+EN0340 | EI | 5 | finish | Electrical and instrument drawings issued for construction | EN0320 |
+EN0400 | ENG | 5 | 3 | Issue construction work packages for Area 100 pump station | EN0130, EN0240 | PE 1, FE 1
+EN0410 | ENG | 5 | 3 | Issue construction work packages for Area 200 pipe rack | EN0130, EN0240 | PE 1, FE 1
+EN0420 | ENG | 5 | 3 | Issue construction work packages for Area 300 heat exchanger and tie-ins | EN0240, EN0340 | PE 1, FE 1
+PR0100 | LL | 5 | 8 | Issue purchase order for process water pumps P-101A and P-101B | EN0200 SS5 | BUYER 0.5, ENGR 0.25
+PR0110 | LL | 5 | 20 | Review and approve pump vendor drawings | PR0100 | ENGR 0.5, BUYER 0.25
+PR0120 | LL | 5 | 44 | Pump vendor pours and machines the pump casings | PR0110 | BUYER 0.25
+PR0125 | LL | 5 | 44 | Pump vendor assembles and shop tests pumps P-101A and P-101B | PR0120 | BUYER 0.25, ENGR 0.1
+PR0130 | LL | 5 | 10 | Ship pumps P-101A and P-101B to site | PR0125 | BUYER 0.25
+PR0200 | LL | 5 | 6 | Issue purchase order for transformer TX-401 and motor control center MCC-401 | EN0300 SS10 | BUYER 0.5, ENGR 0.25
+PR0210 | LL | 5 | 25 | Review and approve transformer and motor control center vendor drawings | PR0200 | ENGR 0.5, BUYER 0.25
+PR0220 | LL | 5 | 44 | Vendor winds the core and coil of transformer TX-401 | PR0210 | BUYER 0.25
+PR0225 | LL | 5 | 44 | Vendor assembles transformer TX-401 and builds MCC-401 | PR0220 | BUYER 0.25
+PR0227 | LL | 5 | 15 | Vendor factory tests TX-401 and MCC-401 with the owner witnessing | PR0225 | ENGR 0.25
+PR0230 | LL | 5 | 12 | Ship transformer TX-401 and motor control center MCC-401 to site | PR0227 | BUYER 0.25
+PR0300 | LL | 5 | 6 | Issue purchase order for control valve FV-301 and field instruments | EN0310 SS10 | BUYER 0.5, ENGR 0.25
+PR0310 | LL | 5 | 40 | Vendor builds and ships control valve FV-301 and field instruments | PR0300 | BUYER 0.25
+PR0320 | LL | 5 | finish | Owner delivers heat exchanger E-301 to site (owner furnished) | MS0000 |
+PR0400 | BM | 5 | 5 | Issue purchase order for pipe, fittings and valves | EN0220 | BUYER 1
+PR0410 | BM | 5 | 40 | Receive pipe, fittings and valves at the laydown yard | PR0400 | BUYER 0.25
+PR0500 | BM | 5 | 5 | Issue purchase order for pipe rack structural steel | EN0120 | BUYER 1
+PR0505 | BM | 5 | 25 | Steel fabricator prepares pipe rack shop drawings for approval | PR0500 | ENGR 0.25
+PR0510 | BM | 5 | 40 | Steel fabricator builds pipe rack steel | PR0505 | BUYER 0.25
+PR0515 | BM | 5 | 15 | Steel fabricator galvanizes and ships pipe rack steel | PR0510 | BUYER 0.25
+PR0600 | BM | 5 | 18 | Purchase and receive cable, cable tray and conduit | EN0320 | BUYER 0.5
+PR0610 | BM | 5 | 35 | Purchase and receive anchor bolts, embeds and reinforcing steel | EN0120 | BUYER 0.5
+PR0620 | BM | 5 | 15 | Purchase and receive instrument tubing, fittings and supports | EN0320 | BUYER 0.25
+PR0630 | BM | 5 | 20 | Purchase and receive insulation, jacketing and heat tracing | EN0220 | BUYER 0.25
+ST0100 | SITE | 6 | 5 | Mobilize site trailers, laydown yard and temporary power | PM0140, PM0130, PM0110 | SUPT 1, GF 1, LAB 4, OPR 1, ELEC 1
+ST0110 | SITE | 6 | 3 | Install temporary fencing and traffic barricades | ST0100 SS2 | LAB 3
+ST0120 | SITE | 6 | 3 | Locate and mark existing underground utilities in the work areas | ST0100 | FE 1, LAB 2, OPR 1, EXC 1
+ST0130 | SITE | 6 | 4 | Survey and stake new foundations and rack column lines | ST0120, EN0130 | FE 2, LAB 1
+ST0140 | SITE | 6 | finish | Construction mobilization complete | ST0110, ST0130 |
+PP0100 | FAB | 6 | 15 | Fabricate pump station piping spools at the fab shop | PR0410, EN0400 | GF 1, PF 3, WLD 2, WMACH 2
+PP0110 | FAB | 6 | 20 | Fabricate pipe rack header spools at the fab shop | PP0100 SS5, EN0410 | PF 3, WLD 2, WMACH 2
+PP0120 | FAB | 6 | 15 | Fabricate heat exchanger and tie-in spools at the fab shop | PP0110, EN0420 | PF 3, WLD 2, WMACH 2
+PP0130 | FAB | 6 | 4 | Radiograph shop spool welds (random 10 percent) | PP0120 | QC 1
+DM0900 | A100.DEMO | 6 | start | Plant operations releases existing pumps P-1 and P-2 for demolition | ST0140 |
+DM1000 | A100.DEMO | 6 | 2 | Lock out, drain and isolate existing pumps P-1 and P-2 | DM0900, EN0400 | GF 1, PF 2, ELEC 1
+DM1010 | A100.DEMO | 6 | 3 | Disconnect and remove existing pump motor cables and conduit | DM1000 | ELEC 3
+DM1020 | A100.DEMO | 6 | 4 | Cut out and remove existing pump suction and discharge piping | DM1000 | PF 3, WLD 1, WMACH 1, LIFT 1
+DM1030 | A100.DEMO | 6 | 3 | Rig out existing pumps P-1 and P-2 and their motors | DM1010, DM1020 | MW 2, LAB 2, OPR 1, CR90 1
+DM1040 | A100.DEMO | 6 | 4 | Break out and haul away the old pump bases | DM1030 | LAB 4, OPR 1, EXC 1
+CV1000 | A100.CIVIL | 6 | 4 | Excavate for new pump foundations | DM1040, ST0130 | OPR 1, LAB 3, EXC 1
+CV1010 | A100.CIVIL | 6 | 8 | Form, set anchor bolts and tie reinforcing steel for pump foundations | CV1000, PR0610 | CARP 4, IW 2, LAB 2, REBAR 6
+CV1020 | A100.CIVIL | 6 | 1 | Place concrete for pump foundations | CV1010 | GF 1, LAB 4, CARP 2, OPR 1, CONC 48
+CV1030 | A100.CIVIL | 7 | 7 | Cure concrete at pump foundations | CV1020 | LAB 1
+CV1040 | A100.CIVIL | 6 | 3 | Strip forms and backfill around pump foundations | CV1030 | CARP 2, LAB 3, OPR 1
+CV1050 | A100.CIVIL | 6 | 5 | Install pump station access platform, stairs and handrail | EQ1011 | IW 3, LIFT 1
+EQ1000 | A100.EQUIP | 6 | 2 | Receive and inspect pumps P-101A and P-101B | PR0130 | MW 2, OPR 1
+EQ1010 | A100.EQUIP | 6 | 1 | Set pump P-101A on its foundation | EQ1000, CV1040 | MW 3, IW 1, OPR 1, CR90 1
+EQ1011 | A100.EQUIP | 6 | 1 | Set pump P-101B on its foundation | EQ1010 | MW 3, IW 1, OPR 1, CR90 1
+EQ1020 | A100.EQUIP | 6 | 2 | Level and rough align pump P-101A | EQ1010 | MW 2
+EQ1021 | A100.EQUIP | 6 | 2 | Level and rough align pump P-101B | EQ1011, EQ1020 | MW 2
+EQ1030 | A100.EQUIP | 6 | 1 | Grout baseplates of pumps P-101A and P-101B | EQ1021 | LAB 2, MW 1, GROUT 40
+EQ1040 | A100.EQUIP | 7 | 3 | Cure baseplate grout at pumps P-101A and P-101B | EQ1030 | LAB 0.5
+EQ1050 | A100.EQUIP | 6 | 2 | Final align pump P-101A to its motor after piping is connected | PP1040 | MW 2
+EQ1051 | A100.EQUIP | 6 | 2 | Final align pump P-101B to its motor after piping is connected | EQ1050 | MW 2
+PP1000 | A100.PIPE | 6 | 8 | Erect suction and discharge piping at pump P-101A | EQ1040, PP0100, DM1020 | PF 4, WLD 2, WMACH 2, LIFT 1
+PP1001 | A100.PIPE | 6 | 8 | Erect suction and discharge piping at pump P-101B | PP1000 SS2 | PF 4, WLD 2, WMACH 2, LIFT 1
+PP1010 | A100.PIPE | 6 | 4 | Install pipe supports and guides at the pump station | PP1000 SS2 | PF 2
+PP1020 | A100.PIPE | 6 | 2 | Radiograph pump station field welds | PP1001 | QC 1
+PP1030 | A100.PIPE | 6 | 2 | Hydrotest pump station piping | PP1020, PP1010, EN0230 | PF 3, QC 1, HYD 1
+PP1040 | A100.PIPE | 6 | 2 | Bolt up suction and discharge flanges to pumps P-101A and P-101B | PP1030 | PF 2, MW 1
+PP1050 | A100.PIPE | 6 | 1 | Install temporary flushing screens in pump suction strainers | PP1040 | PF 2
+EL1000 | A100.ELEC | 6 | 5 | Install conduit and cable supports at the pump station | DM1010, EQ1011, EN0340 | ELEC 3, LIFT 1
+EL1010 | A100.ELEC | 6 | 6 | Pull 480-volt power cables from MCC-401 to pump motors | EL1000, EL4020, PR0600 | ELEC 4, CABLE 1800
+EL1020 | A100.ELEC | 6 | 3 | Terminate and megger pump motor power cables at the motors and MCC-401 | EL1010, EQ1011 | ELEC 2
+EL1030 | A100.ELEC | 6 | 2 | Install local control stations and motor grounding at pumps P-101A and P-101B | EL1000, EQ1011 | ELEC 2
+EL1040 | A100.ELEC | 6 | 3 | Install pump station lighting and receptacles | CV1050 | ELEC 2, LIFT 1
+IN1000 | A100.INST | 6 | 2 | Install pressure transmitters PT-101A and PT-101B and pressure gauges | PP1001, PR0310 | INST 2
+IN1010 | A100.INST | 6 | 3 | Run instrument cable from the pump station transmitters to junction box JB-101 | IN1000, EL1000 | INST 2, ELEC 1
+IN1020 | A100.INST | 6 | 2 | Terminate instrument cables at the transmitters and junction box JB-101 | IN1010 | INST 2
+PI1000 | A100.PAINT | 6 | 3 | Field paint pump station piping welds and supports | PP1040 | PNT 2, LIFT 1
+CV2000 | A200.CIVIL | 6 | 5 | Excavate for pipe rack spread footings, bents 1 to 6 | ST0130, EN0410, CV3020 | OPR 1, LAB 3, EXC 1
+CV2010 | A200.CIVIL | 6 | 10 | Form, set anchor bolts and tie reinforcing steel for rack footings | CV2000, PR0610 | CARP 4, IW 2, LAB 2, REBAR 9
+CV2020 | A200.CIVIL | 6 | 2 | Place concrete for rack footings | CV2010 | GF 1, LAB 4, CARP 2, OPR 1, CONC 72
+CV2030 | A200.CIVIL | 7 | 7 | Cure concrete at rack footings | CV2020 | LAB 1
+CV2040 | A200.CIVIL | 6 | 4 | Strip forms and backfill rack footings | CV2030 | CARP 2, LAB 3, OPR 1
+CV2100 | A200.CIVIL | 6 | 3 | Receive and shake out pipe rack steel at the laydown yard | PR0515 | IW 2, LAB 2, OPR 1
+CV2110 | A200.CIVIL | 6 | 10 | Erect pipe rack columns and beams, bents 1 to 6 | CV2040, CV2100 | GF 1, IW 5, LAB 1, OPR 1, CR90 1
+CV2120 | A200.CIVIL | 6 | 4 | Plumb, bolt up and torque pipe rack steel | CV2110 | IW 3, LIFT 1
+CV2130 | A200.CIVIL | 6 | 2 | Grout pipe rack column base plates | CV2120 | LAB 2, IW 1, GROUT 30
+CV2140 | A200.CIVIL | 6 | 4 | Install pipe rack ladders, platforms and handrail | PP2000 | IW 3, LIFT 1
+ST0200 | A200.CIVIL | 6 | 3 | Erect scaffolding at pipe rack bents 1 to 6 | CV2120 | LAB 4, GF 1
+PP2000 | A200.PIPE | 6 | 20 | Erect 10-inch process water header on the pipe rack | ST0200, PP0110, CV2130 | GF 1, PF 6, WLD 3, WMACH 3, LIFT 2, CR90 1
+PP2010 | A200.PIPE | 6 | 6 | Install pipe shoes, guides and anchors on the pipe rack | PP2000 SS4 | PF 2, IW 1
+PP2020 | A200.PIPE | 6 | 3 | Install high point vents, low point drains and expansion loop | PP2000 | PF 2, WLD 1, WMACH 1
+PP2030 | A200.PIPE | 6 | 3 | Radiograph pipe rack field welds | PP2000, PP2020 | QC 1
+PP2040 | A200.PIPE | 6 | 3 | Hydrotest pipe rack header | PP2030, PP2010, EN0230 | PF 3, QC 1, HYD 1
+ST0210 | A200.PIPE | 6 | 2 | Dismantle scaffolding at pipe rack bents 1 to 6 | EL2020 | LAB 4
+EL2000 | A200.ELEC | 6 | 10 | Install cable tray on the pipe rack | PP2000 SS5, PR0600 | ELEC 4, LIFT 2
+EL2010 | A200.ELEC | 6 | 5 | Install heat tracing cable on the pipe rack header | PP2040, PR0630 | ELEC 2, LIFT 1
+EL2020 | A200.ELEC | 6 | 2 | Terminate heat tracing and test it after insulation | PI2010, EL4070 | ELEC 2
+EL2030 | A200.ELEC | 6 | 4 | Install pipe rack lighting | EL2000, CV2140 | ELEC 2, LIFT 1
+PI2000 | A200.PAINT | 6 | 4 | Field paint pipe rack field welds and touch up damaged primer | PP2040 | PNT 2, LIFT 1
+PI2010 | A200.PAINT | 6 | 10 | Insulate and jacket the pipe rack header for freeze protection | EL2010, PI2000 | INSUL 4, LIFT 2
+DM3000 | A300.DEMO | 6 | 3 | Remove abandoned strainer and piping at the heat exchanger pad area | ST0120, EN0420 | PF 2, LAB 2, WMACH 1
+CV3000 | A300.CIVIL | 6 | 3 | Excavate for the heat exchanger pad | DM3000, ST0130, CV4010 | OPR 1, LAB 2, EXC 1
+CV3010 | A300.CIVIL | 6 | 5 | Form, set anchor bolts and tie reinforcing steel for the heat exchanger pad | CV3000, PR0610 | CARP 3, IW 2, LAB 2, REBAR 4
+CV3020 | A300.CIVIL | 6 | 1 | Place concrete for the heat exchanger pad | CV3010 | GF 1, LAB 4, CARP 2, OPR 1, CONC 36
+CV3030 | A300.CIVIL | 7 | 7 | Cure concrete at the heat exchanger pad | CV3020 | LAB 1
+CV3040 | A300.CIVIL | 6 | 2 | Strip forms and backfill the heat exchanger pad | CV3030 | CARP 2, LAB 2, OPR 1
+EQ3000 | A300.EQUIP | 6 | 2 | Receive and inspect owner furnished heat exchanger E-301 | PR0320 | MW 2, OPR 1, QC 0.5
+EQ3010 | A300.EQUIP | 6 | 1 | Set heat exchanger E-301 on its pad with the 250-ton crane | EQ3000, CV3040 | GF 1, IW 3, MW 2, OPR 2, CR250 1
+EQ3020 | A300.EQUIP | 6 | 2 | Level, anchor and grout the heat exchanger E-301 frame | EQ3010 | MW 2, LAB 1, GROUT 12
+PP3000 | A300.PIPE | 6 | 10 | Erect heat exchanger inlet and outlet piping to the pipe rack | EQ3020, PP2000, PP0130 | PF 4, WLD 2, WMACH 2, LIFT 1
+PP3010 | A300.PIPE | 6 | 3 | Install control valve FV-301 and its block and bypass valves | PP3000, PR0310 | PF 3
+PP3020 | A300.PIPE | 6 | 3 | Install pipe supports for the heat exchanger piping | PP3000 SS2 | PF 2
+PP3030 | A300.PIPE | 6 | 2 | Radiograph heat exchanger piping field welds | PP3000 | QC 1
+PP3040 | A300.PIPE | 6 | 2 | Hydrotest heat exchanger piping | PP3030, PP3010, PP3020, EN0230 | PF 3, QC 1, HYD 1
+PP3100 | A300.TIE | 7 | start | Plant outage starts: existing cooling water headers drained and isolated by owner | PP3040, PP2040 |
+PP3110 | A300.TIE | 7 | 1 | Tie-in TI-01: cut out existing 10-inch supply header spool | PP3100 | GF 1, PF 3, WLD 1, WMACH 1
+PP3120 | A300.TIE | 7 | 2 | Tie-in TI-01: fit up and weld new 10-inch tee on the supply header | PP3110 | PF 3, WLD 2, WMACH 2
+PP3130 | A300.TIE | 7 | 1 | Tie-in TI-01: radiograph new supply header welds | PP3120 | QC 1
+PP3210 | A300.TIE | 7 | 1 | Tie-in TI-02: cut out existing 10-inch return header spool | PP3110 | PF 3, WLD 1, WMACH 1
+PP3220 | A300.TIE | 7 | 2 | Tie-in TI-02: fit up and weld new 10-inch tee on the return header | PP3210, PP3120 | PF 3, WLD 2, WMACH 2
+PP3230 | A300.TIE | 7 | 1 | Tie-in TI-02: radiograph new return header welds | PP3220 | QC 1
+PP3310 | A300.TIE | 7 | 1 | Tie-in TI-03: remove blind flange on existing 4-inch header drain | PP3100 | PF 2
+PP3320 | A300.TIE | 7 | 1 | Tie-in TI-03: bolt up new 4-inch drain connection with new gaskets | PP3310 | PF 2
+PP3400 | A300.TIE | 7 | 1 | Leak test tie-ins TI-01, TI-02 and TI-03 at operating pressure with owner operations | PP3130, PP3230, PP3320 | PF 2, QC 1
+PP3410 | A300.TIE | 7 | finish | Plant outage ends: existing headers returned to service | PP3400 |
+EL3000 | A300.ELEC | 6 | 5 | Install conduit and cable tray for Area 300 instruments | EL2000, EQ3020 | ELEC 3, LIFT 1
+IN3000 | A300.INST | 6 | 3 | Install flow transmitter FT-301 and temperature transmitters TT-301 and TT-302 | PP3040, PR0310 | INST 2
+IN3010 | A300.INST | 6 | 3 | Run instrument air tubing to control valve FV-301 from the existing air header | PP3010, PR0620 | INST 2
+IN3020 | A300.INST | 6 | 2 | Install pressure gauges at the heat exchanger inlet and outlet | PP3040 | INST 1
+IN3030 | A300.INST | 6 | 4 | Pull instrument cables from Area 300 instruments to junction box JB-301 | IN3000, EL3000 | INST 2, ELEC 1
+IN3040 | A300.INST | 6 | 2 | Terminate instrument cables at the instruments and junction box JB-301 | IN3030 | INST 2
+IN3050 | A300.INST | 6 | 4 | Pull home-run cables from JB-101 and JB-301 to the control room marshalling cabinet | IN1020, IN3040 | ELEC 2, INST 1
+IN3060 | A300.INST | 6 | 2 | Terminate home-run cables at the control room marshalling cabinet | IN3050 | INST 2
+PI3000 | A300.PAINT | 6 | 3 | Field paint heat exchanger piping welds and supports | PP3040 | PNT 2
+PI3010 | A300.PAINT | 6 | 2 | Field paint tie-in welds at TI-01 and TI-02 | PP3410 | PNT 2
+CV4000 | A400.CIVIL | 6 | 3 | Form and tie reinforcing steel for the transformer pad and oil containment curb | ST0130, PR0610 | CARP 3, IW 1, LAB 2, REBAR 2
+CV4010 | A400.CIVIL | 6 | 1 | Place concrete for the transformer pad and oil containment curb | CV4000, EL4000 | LAB 3, CARP 2, CONC 18
+CV4020 | A400.CIVIL | 7 | 7 | Cure concrete at the transformer pad | CV4010 | LAB 0.5
+CV4030 | A400.CIVIL | 6 | 2 | Install transformer bollards and gravel surfacing | CV4020 | LAB 2, OPR 1
+EL4000 | A400.ELEC | 6 | 3 | Install ground grid and ground rods at the transformer pad | ST0130 | ELEC 2, LAB 1
+EL4010 | A400.ELEC | 6 | 2 | Set transformer TX-401 on its pad | PR0230, CV4020 | ELEC 2, IW 1, OPR 1, CR90 1
+EL4020 | A400.ELEC | 6 | 2 | Set motor control center MCC-401 in the electrical room | PR0230 | ELEC 3, OPR 1
+EL4030 | A400.ELEC | 6 | 6 | Pull and terminate the 4160-volt feeder from existing switchgear to TX-401 | EL4010, PR0600, EN0330 | ELEC 4
+EL4040 | A400.ELEC | 6 | 3 | Install and terminate the 480-volt feeder from TX-401 to MCC-401 | EL4010, EL4020 | ELEC 3
+EL4050 | A400.ELEC | 6 | 2 | Test transformer TX-401: insulation resistance, turns ratio and oil sample | EL4030, EL4040 | ELEC 2
+EL4060 | A400.ELEC | 6 | 2 | Megger and test motor control center MCC-401 starters and breakers | EL4040 | ELEC 2
+EL4070 | A400.ELEC | 6 | 1 | Energize transformer TX-401 and MCC-401 with owner switching | EL4050, EL4060 | ELEC 2, SUPT 1
+EL4080 | A400.ELEC | 6 | 3 | Install electrical room lighting and receptacles | EL4020 | ELEC 2
+EL4090 | A400.ELEC | 6 | 1 | Install arc flash and equipment labels at TX-401 and MCC-401 | EL4070 | ELEC 1
+CM9000 | MC | 6 | 2 | Walk down Area 100 pump station for mechanical completion | PP1050, EL1020, EL1030, EL1040, IN1020, PI1000, EQ1051, CV1050 | GF 1, FE 1, QC 1
+CM9010 | MC | 6 | 2 | Walk down Area 200 pipe rack for mechanical completion | ST0210, EL2020, EL2030, CV2140 | GF 1, FE 1, QC 1
+CM9020 | MC | 6 | 2 | Walk down Area 300 heat exchanger and tie-ins for mechanical completion | PI3000, PI3010, IN3040, IN3020, IN3010 | GF 1, FE 1, QC 1
+CM9030 | MC | 6 | 1 | Walk down Area 400 electrical room for mechanical completion | EL4090, EL4080, CV4030 | GF 1, FE 1, QC 1
+CM9040 | MC | 6 | 6 | Clear punch list items from the mechanical completion walkdowns | CM9000, CM9010, CM9020, CM9030 | GF 1, PF 2, ELEC 2, LAB 2
+CM9050 | MC | 6 | finish | Mechanical completion: contract milestone | CM9040, IN3060 |
+CM9100 | SU | 6 | 3 | Flush new process water piping to clean water | CM9050 | PF 3, LAB 2, CXE 0.5
+CM9110 | SU | 6 | 1 | Remove temporary flushing screens and reinstate piping | CM9100 | PF 2
+CM9120 | SU | 6 | 4 | Calibrate transmitters and stroke control valve FV-301 | IN1020, IN3040, IN3010 | INST 2
+CM9130 | SU | 6 | 4 | Loop check instruments from the field to the control room | CM9120, IN3060, EL4070 | INST 2, CXE 1
+CM9140 | SU | 6 | 2 | Bump motors and check rotation of pumps P-101A and P-101B | EL4070, EL1020, EQ1051 | ELEC 2, MW 1, CXE 1
+CM9150 | SU | 6 | 3 | Run pumps P-101A and P-101B on water and check vibration | CM9140, CM9110 | MW 2, PF 1, CXE 1
+CM9160 | SU | 6 | 3 | Performance test heat exchanger E-301 with owner operations | CM9150, CM9130 | CXE 1, INST 1
+CM9170 | SU | 6 | 2 | Train owner operators on the new pumps, heat exchanger and controls | CM9160 SS1 | CXE 1, SUPT 0.5
+CM9180 | SU | 6 | finish | Startup complete: system in operation | CM9160, CM9170 |
+CM9190 | SU | 7 | 30 | Run the new system through the 30-day reliability period with owner operations | CM9180 | CXE 0.2
+CM9200 | TO | 6 | 5 | Assemble turnover packages: test records, radiograph reports and loop sheets | CM9050 | QC 1, FE 1
+CM9210 | TO | 6 | 5 | Submit operating and maintenance manuals and spare parts lists | CM9050 | PE 1
+CM9220 | TO | 6 | 2 | Owner acceptance walkdown and signed turnover certificates | CM9200, CM9190, CM9210 | PM 1, SUPT 1, QC 1
+PM0900 | PM | 6 | 5 | Demobilize site trailers, equipment and temporary power | CM9180 | SUPT 0.5, LAB 4, OPR 1, ELEC 1
+PM0910 | PM | 6 | 8 | Submit as-built drawings and closeout documents | CM9220 | PE 1, ENGR 0.5
+PM0920 | PM | 6 | finish | Project complete | PM0900, PM0910 |
+
+# Constraints: "plan" puts the date where the unconstrained plan finishes.
+## constraints
+PR0320 | finish on or after | 2027-01-08 15:30
+DM0900 | start on or after | 2026-11-23 06:00
+PP3100 | start on or after | 2027-02-13 06:00
+CM9050 | finish on or before | plan
+
+## codes
+Area | 100 | Area 100 Pump Station
+Area | 200 | Area 200 Pipe Rack
+Area | 300 | Area 300 Heat Exchanger and Tie-ins
+Area | 400 | Area 400 Electrical Room
+Area | GEN | General, all areas
+Discipline | PM | Project Management
+Discipline | ENG | Engineering
+Discipline | PRC | Procurement
+Discipline | DEM | Demolition
+Discipline | CIV | Civil and Structural
+Discipline | EQP | Equipment
+Discipline | PIP | Piping
+Discipline | ELE | Electrical
+Discipline | INS | Instrumentation
+Discipline | PNT | Paint and Insulation
+Discipline | COM | Commissioning
+Phase | 1-ENG | Engineering
+Phase | 2-PROC | Procurement
+Phase | 3-CONST | Construction
+Phase | 4-COMM | Commissioning and Turnover
+Responsibility | GC | General Contractor
+Responsibility | MECH | Mechanical Subcontractor
+Responsibility | ELEC | Electrical Subcontractor
+Responsibility | VEND | Vendor
+Responsibility | OWN | Owner
+
+# label | data type
+## udfs
+Work Package | text
+Drawing Number | text
+Permit Required | text
+Crew Size | number
+
+# activity | label | value
+## udf values
+DM1000 | Permit Required | Hot work and lockout permit
+DM1020 | Permit Required | Hot work permit
+DM1040 | Permit Required | Excavation permit
+CV1000 | Permit Required | Excavation permit
+CV2000 | Permit Required | Excavation permit
+CV3000 | Permit Required | Excavation permit
+PP3110 | Permit Required | Hot work and line break permit
+PP3210 | Permit Required | Hot work and line break permit
+PP3310 | Permit Required | Line break permit
+EL4070 | Permit Required | Energized work permit
+CV1010 | Drawing Number | RB-S-101
+CV2010 | Drawing Number | RB-S-201
+CV3010 | Drawing Number | RB-S-301
+PP1000 | Drawing Number | RB-P-110
+PP1001 | Drawing Number | RB-P-111
+PP2000 | Drawing Number | RB-P-201
+PP3000 | Drawing Number | RB-P-301
+PP3120 | Drawing Number | RB-P-351
+PP3220 | Drawing Number | RB-P-352
+EL1010 | Drawing Number | RB-E-110
+EL4030 | Drawing Number | RB-E-401
+
+# activity | step | weight
+## steps
+EQ1010 | Rig and lift pump onto foundation | 30
+EQ1010 | Set on shims and anchor bolts | 40
+EQ1010 | Check elevation and centerline | 30
+PP2000 | Lift spools onto the rack | 30
+PP2000 | Fit up joints | 30
+PP2000 | Weld joints | 40
+EL1010 | Set up pulling equipment and reels | 15
+EL1010 | Pull cables to motor P-101A | 40
+EL1010 | Pull cables to motor P-101B | 40
+EL1010 | Tag and seal cable ends | 5
+CV2110 | Set columns on anchor bolts | 50
+CV2110 | Set beams and struts | 50
+PP3040 | Fill and vent the piping | 20
+PP3040 | Hold test pressure and inspect joints | 60
+PP3040 | Drain and record the test | 20
+
+# activity | category | account | name | vendor | cost
+## expenses
+PM0130 | Permits and Fees | 6000 | County building and excavation permits | County Building Department | 18500
+PR0130 | Freight | 6000 | Freight for pumps P-101A and P-101B | Valley Freight Lines | 6800
+PR0230 | Freight | 6000 | Heavy haul for transformer TX-401 and MCC-401 | Valley Freight Lines | 14200
+EQ3010 | Vendor Services | 5000 | 250-ton crane mobilization and demobilization | Northgate Crane Rental | 12000
+PP0130 | Testing and Inspection | 5000 | Radiography of shop spool welds | Summit Inspection Services | 4200
+PP1020 | Testing and Inspection | 5000 | Radiography of pump station field welds | Summit Inspection Services | 3100
+PP2030 | Testing and Inspection | 5000 | Radiography of pipe rack field welds | Summit Inspection Services | 4600
+PP3030 | Testing and Inspection | 5000 | Radiography of heat exchanger piping welds | Summit Inspection Services | 2900
+PP3130 | Testing and Inspection | 5000 | Radiography of tie-in TI-01 welds (outage call-out) | Summit Inspection Services | 2400
+PP3230 | Testing and Inspection | 5000 | Radiography of tie-in TI-02 welds (outage call-out) | Summit Inspection Services | 2400
+EL4050 | Testing and Inspection | 5000 | Transformer oil sample and electrical testing | Keystone Electrical Testing | 4800
+CM9150 | Vendor Services | 5000 | Pump vendor startup technician, 3 days | Pump vendor field service | 7200
+
+# activity | resource | curve
+## curves
+PR0120 | BUYER | Bell, Centered
+PR0220 | BUYER | Bell, Centered
+PP2000 | PF | Steady with Ramps
+EN0200 | ENGR | Early Weighted
+CM9040 | PF | Ramp Down
+
+# target (PROJECT, a WBS code or an activity) | topic | text
+## notes
+PROJECT | Scope | Replace the two worn process water pumps in the existing pump house with new pumps P-101A and P-101B, run a new 10-inch header across a new six-bent pipe rack to the owner furnished plate heat exchanger E-301, and tie the new system into the existing cooling water supply and return headers during the February plant outage. A new 1500 kVA transformer and motor control center feed the pumps.
+PROJECT | Basis and Assumptions | Crews work a 6-day, 10-hour week. Office, engineering and procurement work a 5-day, 8-hour week. Concrete cures and the outage tie-ins run 7 days a week. Rates include burden and small tools. The pumps are lump sum from the pump vendor; installation is ours.
+PROJECT | Constraints and Access | The plant outage window is fixed by operations: headers are drained and isolated on Saturday 13 February. All header work must finish inside the outage. Mechanical completion is a contract date.
+PROJECT | Safety | Lockout and line break permits from plant operations are required before any work on the existing pumps and headers. Daily job hazard analysis at the 6 AM toolbox talk.
+PROJECT | Quality and Inspection | Field welds are radiographed by a third party. Tie-in welds are radiographed 100 percent. Hydrotests are witnessed by the owner inspector.
+PROJECT | Change Notes | Change 001 (approved): add freeze protection heat tracing and insulation on the pipe rack header, added after the owner's winter review.
+A100 | Scope | Demolish the old pumps P-1 and P-2, their bases, piping and power cables, then build new foundations and install pumps P-101A and P-101B with their piping, power, controls and instruments.
+A100.DEMO | Safety | Old pump bases contain asbestos-free grout per the owner's survey dated 12 May. Old motors go to the owner's scrap yard, not off site.
+A200 | Constraints and Access | Bents 3 and 4 sit beside the plant road. Crane picks over the road need a flagger and the road closed for the lift.
+A300.TIE | Constraints and Access | Tie-ins TI-01 and TI-02 are welded tees on live headers after isolation; TI-03 is a flanged drain connection. Each welded tie-in is radiographed before the leak test.
+A300.TIE | Quality and Inspection | Prefabricate the tie-in tees and pre-bevel the spools before the outage. Keep spare gaskets and a second welding machine on hand.
+A400 | Safety | Energizing TX-401 is done only under owner switching orders. Arc flash labels go up before the room is turned over.
+COMM | Basis and Assumptions | Owner operations runs the control system. Our scope ends at the marshalling cabinet terminals; the owner configures the control system.
+MS0000 | Field Notes | Notice to proceed received by email from the owner's project manager.
+PR0120 | Field Notes | Pump vendor reports castings poured on schedule. Shop test witness trip booked.
+PR0220 | Change Notes | Vendor offered an earlier ship date for a premium; declined, the standard date holds the plan.
+PR0320 | Constraints and Access | The owner purchased E-301 directly. Delivery is the owner's; we receive, set and connect it.
+DM1020 | Safety | Pipe may hold residual water and scale. Drain at low points before cutting. Hot work permit each shift.
+CV1020 | Quality and Inspection | Slump and cylinders taken by the testing lab. Pour only above 40 degrees F with blankets on hand.
+CV2110 | Field Notes | Bents 1 and 2 set on the first day; anchor bolt at bent 4 west column was out of tolerance and was corrected by the engineer's sketch SK-07.
+EQ3010 | Safety | Critical lift plan required for the 250-ton crane. Lift plan reviewed by the rigging engineer.
+PP2000 | Field Notes | Header spools arriving from the fab shop in rack order. Two welders on the rack, one at the fab shop.
+PP2000 | Quality and Inspection | Weld map kept in the field office; welder stencil on every weld.
+PP3120 | Quality and Inspection | Hold point: owner inspector to witness fit up before welding.
+PP3400 | Constraints and Access | Owner operations opens the header block valves slowly; we stand by with two fitters until the leak test is accepted.
+EL4070 | Safety | Energized work permit and switching order required. Only qualified electricians in the room.
+CM9050 | Change Notes | Contract date unchanged after change 001; the heat tracing work fits inside the plan.
+CM9150 | Field Notes | Pump vendor startup technician booked for three days.
+
+# Progress at the data date. A slip adds working days to an activity's
+# remaining duration; an overrun scales its actual units.
+## progress
+data date | 2026-10-12 00:00
+slip | PR0125 | 3
+overrun | EN0200 | 1.08
+overrun | PR0110 | 1.10
+overrun | ST0100 | 1.15
+overrun | DM3000 | 1.20
+overrun | CV3010 | 1.12
+overrun | CV2010 | 1.10

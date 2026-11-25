@@ -1,0 +1,22 @@
+/target/
+
+# Machine-specific settings: linker and SDK paths, and the [env] test inputs.
+/.cargo/config.toml
+/AGENTS.local.md
+
+# Build output and local application data.
+/dist/
+/artifacts/
+/desktop/*.log
+/desktop/verification/
+**/__pycache__/
+tools/icons/_review/
+
+# Client data never belongs in the repo. Regression fixtures live outside it
+# (OPENXER_FIXTURES); schedules and workspaces are never committed.
+/engine/fixtures/
+*.xer
+*.XER
+**/openxer.db*
+*.sqlite
+*.sqlite3

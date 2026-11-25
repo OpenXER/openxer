@@ -1,0 +1,40 @@
+[package]
+name = "openxer-chat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Sign in with ChatGPT and a direct Responses API client for the Chat
+# window. A separate crate so the HTTP and TLS code is not linked into
+# openxer-cli.
+
+[dependencies]
+serde_json = "1.0"
+# TLS through the OS stack (Schannel on Windows, OpenSSL on Linux).
+native-tls = "=0.2.18"
+
+[target.'cfg(windows)'.dependencies]
+# Credential Manager, CNG (random bytes, SHA-256, RS256 checks): the
+# windows-sys version already in the tree.
+windows-sys = { version = "=0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Networking_WinHttp",
+    "Win32_Security_Credentials",
+    "Win32_Security_Cryptography",
+] }
+
+[target.'cfg(not(windows))'.dependencies]
+# Random bytes, SHA-256 and RS256 checks through OpenSSL, which native-tls
+# already links on Unix.
+openssl = "=0.10.82"
+
+[features]
+# The fake sign-in service, fake API server and reply builders, for the
+# app's own tests (never in a release build).
+testkit = []
+
+[dev-dependencies]
+# The live example asks about the synthetic sample project.
+openxer-engine = { path = "../engine" }
+openxer-xer = { path = "../xer" }

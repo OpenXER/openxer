@@ -1,0 +1,4 @@
+This copy of OpenXER was installed by Setup. While this file is here, OpenXER
+keeps its workspace, backups and crash reports in %LOCALAPPDATA%\OpenXER (or
+the folder OPENXER_DATA_DIR names), never in this program folder. Uninstall
+removes this file; it never removes that data folder.

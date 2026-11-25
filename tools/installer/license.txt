@@ -1,0 +1,18 @@
+OpenXER
+Copyright (c) 2026 The OpenXER Contributors
+
+OpenXER is free software. You may use, copy, change and share it under
+either of these licenses, at your choice:
+
+  - the MIT License (installed as LICENSE-MIT), or
+  - the Apache License, Version 2.0 (installed as LICENSE-APACHE).
+
+OpenXER includes components made by others. Their licenses and notices are
+installed as THIRD_PARTY.md and travel with the program.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. See the license files
+for the full terms.
+
+Choose "I accept the agreement" to continue.

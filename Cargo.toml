@@ -1,0 +1,26 @@
+[workspace]
+members = ["engine", "xer", "interchange", "desktop", "automation", "chat"]
+default-members = ["desktop"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "A fast, native desktop CPM scheduler for XER files, built to be driven by AI agents."
+repository = "https://github.com/openxer/openxer"
+homepage = "https://github.com/openxer/openxer"
+readme = "README.md"
+keywords = ["scheduling", "cpm", "xer", "gantt", "mcp"]
+categories = ["gui", "command-line-utilities"]
+
+# Optimize dev/test builds enough that headless software-rendered UI tests run
+# fast while keeping debug assertions, line numbers and low linker disk usage.
+[profile.dev]
+opt-level = 1
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 2
+debug = 0

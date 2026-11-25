@@ -1,0 +1,42 @@
+name: Bug report
+description: Something works wrong, a date or float is off, or the app crashes.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not attach real project schedules, workspace databases or screenshots of real projects.**
+        They hold your clients' data. Describe the schedule shape instead, or build a small invented example.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: shape
+    attributes:
+      label: Schedule shape
+      description: |
+        For scheduling results: activity and relationship types, lags, calendars, constraints,
+        progress, scheduling and leveling options involved, and the dates you expected (and why).
+  - type: input
+    id: version
+    attributes:
+      label: OpenXER version
+      placeholder: "openxer-cli --version, or Help > About in the app"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 23H2"
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: This report contains no real client or project data.
+          required: true

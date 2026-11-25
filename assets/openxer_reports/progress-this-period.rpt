@@ -1,0 +1,452 @@
+object TCVReport
+  Width = 1056
+  Height = 600
+  ParentFont = False
+  Color = clWhite
+  Title = 'Progress This Period'
+  ReportName = 'Progress This Period'
+  VDBEngineName = 'VDBORION'
+  PageSettingsList.Strings = (
+    '(0||()('
+    '  (0||page(orientation|2|paper_size|1|length|8.5|width|11|scale|100|use_fit_to|N)())'
+    '  (0||margins(left_margin|0.5|right_margin|0.5|top_margin|0.5|bottom_margin|0.5|header_margin|0.3|footer_margin|0.3)())'
+    '  (0||header()('
+    '    (0||left(text||image_file_name||mode|T)('
+    '      (0||font(font_name|Arial|color|0|size|10|style|Regular)())))'
+    '    (0||middle(text||image_file_name||mode|T)('
+    '      (0||font(font_name|Arial|color|0|size|10|style|Regular)())))'
+    '    (0||right(text|[date] [time]|image_file_name||mode|T)('
+    '      (0||font(font_name|Arial|color|0|size|10|style|Regular)())))))'
+    '  (0||footer()('
+    '    (0||left(text||image_file_name||mode|T)('
+    '      (0||font(font_name|Arial|color|0|size|10|style|Regular)())))'
+    '    (0||middle(text|Page [page_number] of [total_pages]|image_file_name||mode|T)('
+    '      (0||font(font_name|Arial|color|0|size|10|style|Regular)())))'
+    '    (0||right(text||image_file_name||mode|T)('
+    '      (0||font(font_name|Arial|color|0|size|10|style|Regular)())))))))')
+  FontHeading1.Color = clBlack
+  FontHeading1.Height = -19
+  FontHeading1.Name = 'Arial'
+  FontHeading1.Style = [fsBold]
+  FontHeading2.Color = clBlack
+  FontHeading2.Height = -16
+  FontHeading2.Name = 'Arial'
+  FontHeading2.Style = [fsBold]
+  FontHeading3.Color = clBlack
+  FontHeading3.Height = -13
+  FontHeading3.Name = 'Arial'
+  FontHeading3.Style = [fsBold]
+  FontHeading4.Color = clBlack
+  FontHeading4.Height = -11
+  FontHeading4.Name = 'Arial'
+  FontHeading4.Style = [fsBold]
+  FontBody1.Color = clBlack
+  FontBody1.Height = -19
+  FontBody1.Name = 'Arial'
+  FontBody1.Style = []
+  FontBody2.Color = clBlack
+  FontBody2.Height = -16
+  FontBody2.Name = 'Arial'
+  FontBody2.Style = []
+  FontBody3.Color = clBlack
+  FontBody3.Height = -13
+  FontBody3.Name = 'Arial'
+  FontBody3.Style = []
+  object TCVReportRowContainer
+    Top = 1
+    Width = 960
+    Height = 48
+    ContainerAlign = alcTop
+    ContainerType = rctReportHeader
+  end
+  object TCVReportRowContainer
+    Top = 1
+    Width = 960
+    Height = 86
+    ContainerAlign = alcTop
+    ContainerType = rctPageHeader
+    object TCVReportRow
+      Top = 1
+      Width = 960
+      Height = 28
+      Color = clWhite
+      ContainerAlign = alcTop
+      object TCVReportTextCell
+        Width = 960
+        Height = 27
+        ParentFont = False
+        Color = clWhite
+        AutoAlignment = False
+        CellType = ctVariable
+        VariableField = '[title]'
+        FontStyle = rfsHeading1
+        Alignment = taLeftJustify
+        Font.Color = clBlack
+        Font.Height = -19
+        Font.Name = 'Arial'
+        Font.Style = [fsBold]
+      end
+    end
+    object TCVReportRow
+      Top = 29
+      Width = 960
+      Height = 18
+      Color = clWhite
+      ContainerAlign = alcTop
+      object TCVReportTextCell
+        Width = 560
+        Height = 17
+        ParentFont = False
+        Color = clWhite
+        AutoAlignment = False
+        CellType = ctVariable
+        VariableField = 'Project: [project_code]  [project_name]'
+        FontStyle = rfsBody3
+        Alignment = taLeftJustify
+        Font.Color = clBlack
+        Font.Height = -13
+        Font.Name = 'Arial'
+        Font.Style = []
+      end
+      object TCVReportTextCell
+        Left = 560
+        Width = 400
+        Height = 17
+        ParentFont = False
+        Color = clWhite
+        AutoAlignment = False
+        CellType = ctVariable
+        VariableField = 'Data date: [data_date]'
+        FontStyle = rfsBody3
+        Alignment = taRightJustify
+        Font.Color = clBlack
+        Font.Height = -13
+        Font.Name = 'Arial'
+        Font.Style = []
+      end
+    end
+    object TCVReportRow
+      Top = 47
+      Width = 960
+      Height = 18
+      Color = clWhite
+      ContainerAlign = alcTop
+      object TCVReportTextCell
+        Width = 960
+        Height = 17
+        ParentFont = False
+        Color = clWhite
+        AutoAlignment = False
+        CellType = ctCustomText
+        Text = 'Activities that started or finished in the seven days before the data date.'
+        FontStyle = rfsBody3
+        Alignment = taLeftJustify
+        Font.Color = clBlack
+        Font.Height = -13
+        Font.Name = 'Arial'
+        Font.Style = []
+      end
+    end
+    object TCVReportRow
+      Top = 65
+      Width = 960
+      Height = 20
+      Color = clWhite
+      ContainerAlign = alcTop
+      object TCVReportTextCell
+        Width = 90
+        Height = 19
+        ParentFont = False
+        Color = clWhite
+        AutoAlignment = False
+        CellType = ctFieldTitle
+        DataField = 'task_code'
+        FieldTitle = 'Activity ID'
+        FontStyle = rfsHeading3
+        Borders = [rpBottom]
+        Alignment = taLeftJustify
+        Font.Color = clBlack
+        Font.Height = -13
+        Font.Name = 'Arial'
+        Font.Style = [fsBold]
+      end
+      object TCVReportTextCell
+        Left = 90
+        Width = 270
+        Height = 19
+        ParentFont = False
+        Color = clWhite
+        AutoAlignment = False
+        CellType = ctFieldTitle
+        DataField = 'task_name'
+        FieldTitle = 'Activity Name'
+        FontStyle = rfsHeading3
+        Borders = [rpBottom]
+        Alignment = taLeftJustify
+        Font.Color = clBlack
+        Font.Height = -13
+        Font.Name = 'Arial'
+        Font.Style = [fsBold]
+      end
+      object TCVReportTextCell
+        Left = 360
+        Width = 120
+        Height = 19
+        ParentFont = False
+        Color = clWhite
+        AutoAlignment = False
+        CellType = ctFieldTitle
+        DataField = 'act_start_date'
+        FieldTitle = 'Actual Start'
+        FontStyle = rfsHeading3
+        Borders = [rpBottom]
+        Alignment = taRightJustify
+        Font.Color = clBlack
+        Font.Height = -13
+        Font.Name = 'Arial'
+        Font.Style = [fsBold]
+      end
+      object TCVReportTextCell
+        Left = 480
+        Width = 120
+        Height = 19
+        ParentFont = False
+        Color = clWhite
+        AutoAlignment = False
+        CellType = ctFieldTitle
+        DataField = 'act_end_date'
+        FieldTitle = 'Actual Finish'
+        FontStyle = rfsHeading3
+        Borders = [rpBottom]
+        Alignment = taRightJustify
+        Font.Color = clBlack
+        Font.Height = -13
+        Font.Name = 'Arial'
+        Font.Style = [fsBold]
+      end
+      object TCVReportTextCell
+        Left = 600
+        Width = 90
+        Height = 19
+        ParentFont = False
+        Color = clWhite
+        AutoAlignment = False
+        CellType = ctFieldTitle
+        DataField = 'complete_pct'
+        FieldTitle = '% Complete'
+        FontStyle = rfsHeading3
+        Borders = [rpBottom]
+        Alignment = taRightJustify
+        Font.Color = clBlack
+        Font.Height = -13
+        Font.Name = 'Arial'
+        Font.Style = [fsBold]
+      end
+      object TCVReportTextCell
+        Left = 690
+        Width = 140
+        Height = 19
+        ParentFont = False
+        Color = clWhite
+        AutoAlignment = False
+        CellType = ctFieldTitle
+        DataField = 'remain_drtn_hr_cnt'
+        FieldTitle = 'Remaining Duration'
+        FontStyle = rfsHeading3
+        Borders = [rpBottom]
+        Alignment = taRightJustify
+        Font.Color = clBlack
+        Font.Height = -13
+        Font.Name = 'Arial'
+        Font.Style = [fsBold]
+      end
+      object TCVReportTextCell
+        Left = 830
+        Width = 130
+        Height = 19
+        ParentFont = False
+        Color = clWhite
+        AutoAlignment = False
+        CellType = ctFieldTitle
+        DataField = 'activity_status'
+        FieldTitle = 'Status'
+        FontStyle = rfsHeading3
+        Borders = [rpBottom]
+        Alignment = taLeftJustify
+        Font.Color = clBlack
+        Font.Height = -13
+        Font.Name = 'Arial'
+        Font.Style = [fsBold]
+      end
+    end
+  end
+  object TCVReportSectionContainer
+    Top = 1
+    Width = 960
+    Height = 200
+    ContainerAlign = alcClient
+    ContainerType = rctDetail
+    object TCVReportGroupBy
+      Top = 1
+      Width = 960
+      Height = 120
+      ContainerAlign = alcTop
+      GroupByTableName = 'TASK'
+      MaxLevels = 0
+      Filter.Strings = (
+        '#begin_or'
+        '  act_start_date >= DD-7D'
+        '  act_end_date >= DD-7D'
+        '#end')
+      SortBy.Strings = (
+        'act_start_date ASC'
+        'task_code ASC')
+      object TCVReportRowContainer
+        Top = 1
+        Width = 960
+        Height = 48
+        ContainerAlign = alcTop
+        ContainerType = rctGroupByHeader
+      end
+      object TCVReportSectionContainer
+        Top = 1
+        Width = 960
+        Height = 200
+        ContainerAlign = alcClient
+        ContainerType = rctDetail
+        object TCVReportRow
+          Top = 1
+          Width = 960
+          Height = 18
+          Color = clWhite
+          ContainerAlign = alcTop
+          object TCVReportTextCell
+            Width = 90
+            Height = 17
+            ParentFont = False
+            Color = clWhite
+            AutoAlignment = False
+            DataField = 'task_code'
+            FontStyle = rfsBody3
+            Alignment = taLeftJustify
+            Font.Color = clBlack
+            Font.Height = -13
+            Font.Name = 'Arial'
+            Font.Style = []
+          end
+          object TCVReportTextCell
+            Left = 90
+            Width = 270
+            Height = 17
+            ParentFont = False
+            Color = clWhite
+            AutoAlignment = False
+            DataField = 'task_name'
+            FontStyle = rfsBody3
+            Alignment = taLeftJustify
+            Font.Color = clBlack
+            Font.Height = -13
+            Font.Name = 'Arial'
+            Font.Style = []
+          end
+          object TCVReportTextCell
+            Left = 360
+            Width = 120
+            Height = 17
+            ParentFont = False
+            Color = clWhite
+            AutoAlignment = False
+            DataField = 'act_start_date'
+            FontStyle = rfsBody3
+            Alignment = taRightJustify
+            Font.Color = clBlack
+            Font.Height = -13
+            Font.Name = 'Arial'
+            Font.Style = []
+          end
+          object TCVReportTextCell
+            Left = 480
+            Width = 120
+            Height = 17
+            ParentFont = False
+            Color = clWhite
+            AutoAlignment = False
+            DataField = 'act_end_date'
+            FontStyle = rfsBody3
+            Alignment = taRightJustify
+            Font.Color = clBlack
+            Font.Height = -13
+            Font.Name = 'Arial'
+            Font.Style = []
+          end
+          object TCVReportTextCell
+            Left = 600
+            Width = 90
+            Height = 17
+            ParentFont = False
+            Color = clWhite
+            AutoAlignment = False
+            DataField = 'complete_pct'
+            FontStyle = rfsBody3
+            Alignment = taRightJustify
+            Font.Color = clBlack
+            Font.Height = -13
+            Font.Name = 'Arial'
+            Font.Style = []
+          end
+          object TCVReportTextCell
+            Left = 690
+            Width = 140
+            Height = 17
+            ParentFont = False
+            Color = clWhite
+            AutoAlignment = False
+            DataField = 'remain_drtn_hr_cnt'
+            FontStyle = rfsBody3
+            Alignment = taRightJustify
+            Font.Color = clBlack
+            Font.Height = -13
+            Font.Name = 'Arial'
+            Font.Style = []
+          end
+          object TCVReportTextCell
+            Left = 830
+            Width = 130
+            Height = 17
+            ParentFont = False
+            Color = clWhite
+            AutoAlignment = False
+            DataField = 'activity_status'
+            FontStyle = rfsBody3
+            Alignment = taLeftJustify
+            Font.Color = clBlack
+            Font.Height = -13
+            Font.Name = 'Arial'
+            Font.Style = []
+          end
+        end
+      end
+      object TCVReportRowContainer
+        Top = 1
+        Width = 960
+        Height = 48
+        ContainerAlign = alcBottom
+        ContainerType = rctGroupbyFooter
+      end
+    end
+  end
+  object TCVReportRowContainer
+    Top = 1
+    Width = 960
+    Height = 48
+    ContainerAlign = alcBottom
+    ContainerType = rctPageFooter
+  end
+  object TCVReportRowContainer
+    Top = 1
+    Width = 960
+    Height = 48
+    ContainerAlign = alcBottom
+    ContainerType = rctReportFooter
+  end
+end

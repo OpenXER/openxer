@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  build-and-test:
+    name: Build and test (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Tests
+        # Tests that need private fixtures or corpus files skip themselves here.
+        run: cargo test --workspace --no-fail-fast -- --skip full_ui_sweep --skip dialog_formatting_sweep
+      - name: UI click-through sweeps
+        run: cargo test -p openxer-desktop -- full_ui_sweep dialog_formatting_sweep
+      - name: Release build
+        run: cargo build --release -p openxer-desktop -p openxer-automation
+
+  build-and-test-linux:
+    name: Build and test (Linux)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      # A C compiler for the bundled SQLite and OpenSSL headers for native-tls
+      # and openxer-chat on Linux. The window, OpenGL and portal libraries are
+      # loaded at run time. Liberation Sans stands in for Arial in text measurements.
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libssl-dev fonts-liberation
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Tests
+        # Tests that need private fixtures or corpus files skip themselves here.
+        run: cargo test --workspace --no-fail-fast -- --skip full_ui_sweep --skip dialog_formatting_sweep
+      - name: UI click-through sweeps
+        run: cargo test -p openxer-desktop -- full_ui_sweep dialog_formatting_sweep
+      - name: Release build
+        run: cargo build --release -p openxer-desktop -p openxer-automation
+
+  licenses:
+    name: Dependency licenses and sources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans sources

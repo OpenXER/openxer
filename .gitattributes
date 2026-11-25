@@ -1,0 +1,7 @@
+# Keep LF in the repository whatever the editor or script writes.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.xlsx binary
+*.pdf binary
+*.db binary

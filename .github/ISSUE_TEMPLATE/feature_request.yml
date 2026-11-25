@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest something OpenXER should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like
+      description: How it should work, in the app, the CLI or the MCP server.
+  - type: textarea
+    id: workflow
+    attributes:
+      label: How schedulers do this today
+      description: The workflow or convention schedulers already know for this, if there is one.

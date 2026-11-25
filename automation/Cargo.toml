@@ -1,0 +1,30 @@
+[package]
+name = "openxer-automation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "openxer-cli"
+path = "src/main.rs"
+
+[dependencies]
+openxer-engine = { path = "../engine" }
+openxer-xer = { path = "../xer" }
+openxer-interchange = { path = "../interchange" }
+chrono = { version = "0.4.42", default-features = false, features = ["std", "clock"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rusqlite = { version = "=0.37.0", features = ["bundled", "backup"] }
+tempfile = "3.27"
+toml_edit = "=0.25.18"
+# Reading the text of document files: docx is a zip of XML (the same
+# versions the spreadsheet reader already uses); PDF text page by page.
+zip = { version = "9.3.0", default-features = false, features = ["deflate"] }
+quick-xml = { version = "0.42.0", features = ["encoding"] }
+pdf-extract = "=0.12.1"
+encoding_rs = "0.8.35"
+
+[dev-dependencies]
+rust_xlsxwriter = { version = "=0.102.0", default-features = false }

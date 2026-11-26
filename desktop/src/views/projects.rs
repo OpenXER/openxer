@@ -92,11 +92,13 @@ const MONTHS: [(&str, &str); 12] = [
 pub struct ProjectsMenu {
     /// The row is a project, not an EPS node.
     pub on_project: bool,
+    /// The project row is currently open (Close Project applies).
+    pub is_open: bool,
     /// Add and Paste have an EPS node to go under.
     pub can_add: bool,
     /// The project is kept in the workspace (Cut and Copy apply).
     pub stored: bool,
-    /// The project is closed and kept in the workspace.
+    /// The project is kept in the workspace, or the row is an EPS node.
     pub deletable: bool,
     /// A project was cut or copied.
     pub clipboard: bool,
@@ -152,6 +154,13 @@ pub fn projects_menu(m: &ProjectsMenu) -> Vec<Entry> {
             "",
             Icon::ProjectOpen,
             m.on_project,
+        ),
+        item(
+            "close_project",
+            "Close Project",
+            "",
+            Icon::ProjectClosed,
+            m.is_open,
         ),
         details_item(m.details),
         Entry::Item(Spec::new("edit_details", "Edit Project Details").enabled(m.on_project)),
@@ -741,8 +750,12 @@ impl App {
         let stamps = self.store.stamps().unwrap_or_default();
         self.drop_stale_rollups();
         let shared = self.dictionary_shared();
-        let live = summarize_live(&self.project);
-        let is_live = |c: &Cached| c.source == live.source && c.key == live.key;
+        let has_open = !self.open_set.empty;
+        let live = has_open.then(|| summarize_live(&self.project));
+        let is_live = |c: &Cached| {
+            live.as_ref()
+                .is_some_and(|l| c.source == l.source && c.key == l.key)
+        };
         let mut out = vec![];
         let mut found_current = false;
         let cache = &mut self.views.projects.cache;
@@ -783,10 +796,12 @@ impl App {
             let entry = &cache[&id];
             if is_live(entry) {
                 found_current = true;
-                out.push(ProjectSummary {
-                    store_id: Some(id),
-                    ..live.clone()
-                });
+                if let Some(live) = live.as_ref() {
+                    out.push(ProjectSummary {
+                        store_id: Some(id),
+                        ..live.clone()
+                    });
+                }
             } else if let Some(s) = &entry.summary {
                 out.push(ProjectSummary {
                     store_id: Some(id),
@@ -795,7 +810,9 @@ impl App {
             }
         }
         if !found_current {
-            out.push(live);
+            if let Some(live) = live {
+                out.push(live);
+            }
         }
         out.sort_by(|a, b| a.id.cmp(&b.id).then(a.source.cmp(&b.source)));
         for s in &mut out {
@@ -914,10 +931,14 @@ impl App {
         };
         match self.store.load(id) {
             Ok(p) => {
+                let was_empty = self.open_set.empty;
                 let before = self.project.source_name.clone();
                 let key = self.project.model.project.proj_id;
                 self.load(p);
-                if self.project.source_name != before || self.project.model.project.proj_id != key {
+                if was_empty
+                    || self.project.source_name != before
+                    || self.project.model.project.proj_id != key
+                {
                     self.saved_projects = self.store.list().unwrap_or_default();
                     self.show_view(MainView::Activities);
                 }
@@ -1089,10 +1110,7 @@ impl App {
         let has_store = selected.as_ref().is_some_and(|s| s.store_id.is_some());
         self.views.projects.edit_enabled = Some([
             target.is_some(),
-            folder.is_some()
-                || selected
-                    .as_ref()
-                    .is_some_and(|s| s.store_id.is_some() && !is_open(s)),
+            folder.is_some() || has_store,
             has_store,
             has_store,
             (pending.is_some() || copied.is_some()) && target.is_some(),
@@ -1118,7 +1136,7 @@ impl App {
                 if response.clicked() {
                     open = selected.clone();
                 }
-                let closable = open_ids.len() > 1 && selected.as_ref().is_some_and(is_open);
+                let closable = selected.as_ref().is_some_and(is_open);
                 let response =
                     sheet::side_button(ui, chrome::Icon::ProjectClosed, "Close Project", closable);
                 self.action("projects_cmd_close", &response);
@@ -1141,14 +1159,11 @@ impl App {
                 if response.clicked() {
                     add = target;
                 }
-                let deletable = folder.is_some()
-                    || selected
-                        .as_ref()
-                        .is_some_and(|s| s.store_id.is_some() && !is_open(s));
+                let deletable = folder.is_some() || has_store;
                 let response = sheet::side_button(
                     ui,
                     chrome::Icon::Delete,
-                    "Delete (a closed project, or an EPS node with everything under it)",
+                    "Delete (a project, or an EPS node with everything under it)",
                     deletable,
                 );
                 self.action("projects_cmd_delete", &response);
@@ -1389,12 +1404,13 @@ impl App {
                 let collapsed = &self.views.projects.collapsed;
                 let any_collapsed = groups.iter().any(|g| collapsed.contains(&g.0));
                 let any_open = groups.iter().any(|g| !collapsed.contains(&g.0));
-                let deletable_row = |s: &ProjectSummary| s.store_id.is_some() && !is_open(s);
+                let deletable_row = |s: &ProjectSummary| s.store_id.is_some();
                 let fill_ready = self.view_fill_ready();
                 let menu = |row: usize| {
                     let project = lines.get(row).and_then(project_line);
                     projects_menu(&ProjectsMenu {
                         on_project: project.is_some(),
+                        is_open: project.is_some_and(is_open),
                         can_add: match lines.get(row) {
                             Some(EpsLine::Eps(id, _)) => *id > 0,
                             Some(_) => project.is_some_and(|p| p.store_id.is_some()),
@@ -1578,6 +1594,7 @@ impl App {
                 if let Some((i, key)) = response.menu {
                     match key {
                         "open_project" => open = project_at(i),
+                        "close_project" => close = project_at(i).and_then(|p| p.store_id),
                         "add" | "cut" | "copy" | "paste" | "delete" => {
                             self.views.projects.command = Some(key);
                         }
@@ -1666,7 +1683,7 @@ impl App {
             self.view_fill_down(time);
         }
 
-        let deletable = |s: &ProjectSummary| s.store_id.is_some() && !is_open(s);
+        let deletable = |s: &ProjectSummary| s.store_id.is_some();
         match self.views.projects.command.take() {
             Some("add") => add = target,
             Some("delete") => {

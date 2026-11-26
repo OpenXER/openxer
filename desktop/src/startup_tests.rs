@@ -100,7 +100,7 @@ fn a_new_workspace_starts_on_the_sample() {
     let row = started.store.list().unwrap()[0].0;
     let c = started.store.connection();
     let baselines = crate::baselines::store::list(c, row).unwrap();
-    assert_eq!(baselines.len(), 1);
+    assert_eq!(baselines.len(), 2);
     assert_eq!(
         openxer_interchange::baseline::project_value(
             &started.project.document,
@@ -109,11 +109,16 @@ fn a_new_workspace_starts_on_the_sample() {
         ),
         baselines[0].project_key.to_string()
     );
+    let ub = crate::baselines::store::user_baselines(c, row).0;
     assert_eq!(
-        crate::baselines::store::user_baselines(c, row).0[0],
+        ub[0],
         crate::baselines::store::Choice::Baseline(baselines[0].id)
     );
-    // Reopened, it is the same sample with its baseline (no second copy).
+    assert_eq!(
+        ub[1],
+        crate::baselines::store::Choice::Baseline(baselines[1].id)
+    );
+    // Reopened, it is the same sample with its two baselines (no second copy).
     drop(started);
     let (again, _) = start(&args(&db));
     let again = again.unwrap();
@@ -122,8 +127,37 @@ fn a_new_workspace_starts_on_the_sample() {
         crate::baselines::store::list(again.store.connection(), row)
             .unwrap()
             .len(),
-        1
+        2
     );
+}
+
+/// Deleting the default sample project while it is open and the only project
+/// in the workspace leaves an empty workspace, cleans up its dictionary rows,
+/// and restarting does not re-create the sample.
+#[test]
+fn deleting_the_only_sample_project_stays_empty_on_restart() {
+    let db = temp_db("delete-only-sample");
+    let (started, _) = start(&args(&db));
+    let started = started.unwrap();
+    let sample_row = started.store.list().unwrap()[0].0;
+    let ctx = egui::Context::default();
+    let mut app = App::new(&ctx, started.store, started.project);
+    app.request_project_delete(sample_row);
+    let confirm = app.views.projects.delete.as_ref().unwrap();
+    assert!(confirm.sample);
+    assert!(confirm.open);
+    app.views.projects.delete = None;
+    app.delete_workspace_project(sample_row, 1.).unwrap();
+    assert!(app.open_set.empty);
+    assert!(app.store.list().unwrap().is_empty());
+    drop(app);
+    drop(started.lock);
+    // Restarting an emptied workspace opens empty, without re-seeding RIVERBEND.
+    let (again, told) = start(&args(&db));
+    assert_eq!(told, None);
+    let again = again.unwrap();
+    assert!(again.empty);
+    assert!(again.store.list().unwrap().is_empty());
 }
 
 /// A workspace made by the first start holds the sample project, the
@@ -161,9 +195,12 @@ fn a_new_workspace_holds_only_the_sample_and_the_starter_reports() {
     let baselines: i64 = c
         .query_row("SELECT COUNT(*) FROM baselines", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(baselines, 1, "the sample's as-planned copy only");
+    assert_eq!(
+        baselines, 2,
+        "the sample's as-planned and rebaseline copies"
+    );
     // The dictionary is the sample's: every row is noted as the sample's,
-    // and its notebook topics are the sample's own seven.
+    // and its notebook topics are the sample's own eight.
     let (dict, _) = workspace_db::read_dictionary(c).unwrap();
     let record = workspace_db::read_sample(c).unwrap().unwrap();
     assert_eq!(record.row, started.store.list().unwrap()[0].0);
@@ -179,7 +216,8 @@ fn a_new_workspace_holds_only_the_sample_and_the_starter_reports() {
             "Safety",
             "Quality and Inspection",
             "Field Notes",
-            "Change Notes"
+            "Change Notes",
+            "Commissioning Notes"
         ]
     );
 }
@@ -549,7 +587,24 @@ fn the_sample_passes_check_schedule() {
     let failed: Vec<String> = results
         .iter()
         .filter(|r| r.passed == Some(false))
-        .map(|r| format!("{} {:?}", r.check.name(), r.value))
+        .map(|r| {
+            let codes: Vec<String> = r
+                .items
+                .iter()
+                .filter_map(|item| match item {
+                    crate::schedule_check::Item::Activity(i) => {
+                        let a = &current.model.activities[*i];
+                        Some(format!(
+                            "{}(tf={}d)",
+                            a.task_code,
+                            a.total_float.unwrap_or(0) / 480
+                        ))
+                    }
+                    _ => None,
+                })
+                .collect();
+            format!("{} {:?} {:?}", r.check.name(), r.value, codes)
+        })
         .collect();
     assert!(failed.is_empty(), "{failed:?}");
     assert!(results.iter().filter(|r| r.passed == Some(true)).count() >= 13);

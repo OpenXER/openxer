@@ -18,6 +18,10 @@ impl App {
     /// [`App::save`], returning the failure instead of showing it.
     pub(crate) fn try_save(&mut self) -> Result<(), String> {
         self.save_view();
+        if self.open_set.empty {
+            self.dirty = false;
+            return Ok(());
+        }
         // Other open projects first, so the active one is the workspace's last project.
         self.save_parked()?;
         match self.store.save_stored(&self.project) {
@@ -58,15 +62,18 @@ impl App {
         self.load_from(p, true);
     }
     fn load_from(&mut self, p: ProjectData, file: bool) {
-        if self.any_dirty() {
-            self.save();
+        if !self.open_set.empty {
             if self.any_dirty() {
-                return;
+                self.save();
+                if self.any_dirty() {
+                    return;
+                }
             }
+            self.keep_closing_history();
+            // Loading one project replaces the open set.
+            self.close_parked();
         }
-        self.keep_closing_history();
-        // Loading one project replaces the open set.
-        self.close_parked();
+        self.open_set.empty = false;
         if file {
             // Only now: the projects saved and closed above still needed it.
             self.store
@@ -291,6 +298,10 @@ impl App {
     /// Add without the wizard: the row goes in at once and its name cell
     /// opens for typing.
     pub(crate) fn new_activity(&mut self) {
+        if self.open_set.empty {
+            self.status = "Open or create a project first.".into();
+            return;
+        }
         let place = self.new_activity_place();
         let i = self.insert_new_activity(&place);
         // The name cell opens with the new name selected: typing replaces
@@ -349,7 +360,7 @@ impl App {
         }
         if changed {
             self.records_revision = self.history.revision();
-            self.dirty = true;
+            self.dirty = !self.open_set.empty;
             self.status = if redo { "Redo" } else { "Undo" }.into();
             self.date_edits.clear();
             self.edit_cell = None;

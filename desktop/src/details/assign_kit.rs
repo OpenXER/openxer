@@ -122,6 +122,34 @@ impl App {
         size: Vec2,
         paint: &mut dyn FnMut(&mut egui::Ui, usize, usize, bool),
     ) -> ListOut {
+        self.assign_list_with_menu(
+            ui,
+            dialog,
+            grid_id,
+            cols,
+            keys,
+            selected,
+            size,
+            paint,
+            &mut |_, _| {},
+        )
+    }
+
+    /// [`Self::assign_list`] with a right-click context menu handler (`row` is
+    /// the clicked line, or `None` for the empty area).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn assign_list_with_menu(
+        &mut self,
+        ui: &mut egui::Ui,
+        dialog: &'static str,
+        grid_id: &str,
+        cols: &[(&str, f32)],
+        keys: &[Option<i64>],
+        selected: &mut Option<i64>,
+        size: Vec2,
+        paint: &mut dyn FnMut(&mut egui::Ui, usize, usize, bool),
+        menu: &mut dyn FnMut(&mut egui::Ui, Option<usize>),
+    ) -> ListOut {
         let rows = self.detail.assign_rows.entry(dialog).or_default();
         let shown = rows.shown(selected, keys);
         let out = grid_marked(
@@ -132,10 +160,9 @@ impl App {
             shown.current,
             &shown.rows,
             size,
-            &mut |ui, ev, sel| {
-                if let Ev::Cell(r, c) = ev {
-                    paint(ui, r, c, sel);
-                }
+            &mut |ui, ev, sel| match ev {
+                Ev::Cell(r, c) => paint(ui, r, c, sel),
+                Ev::Menu(row) => menu(ui, row),
             },
         );
         if let Some(Some(key)) = out.clicked.and_then(|r| keys.get(r)) {

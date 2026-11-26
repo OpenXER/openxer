@@ -69,8 +69,8 @@ fn projects_and_wbs_show_each_edit_command_once() {
     }
     // The WBS shift buttons stay with the Move bar, still shown.
     assert!(!d.has("wbs_cmd_Shift up") && d.has("dock_move_up"));
-    // The dock's Projects commands follow the view's own rules: the open
-    // project cannot be deleted.
+    // The dock's Projects commands follow the view's own rules: an open
+    // project can be copied or deleted (saving and closing first).
     d.app.views.hidden_toolbars.remove("Edit");
     d.app.show_view(MainView::Projects);
     let row = d
@@ -82,7 +82,7 @@ fn projects_and_wbs_show_each_edit_command_once() {
         + 1;
     d.click(&format!("projects_row_{row}"));
     d.frames(2);
-    assert_eq!(d.app.view_edit_enabled(ViewEdit::Delete), Some(false));
+    assert_eq!(d.app.view_edit_enabled(ViewEdit::Delete), Some(true));
     assert_eq!(d.app.view_edit_enabled(ViewEdit::Copy), Some(true));
     assert!(d.app.error.is_none(), "{:?}", d.app.error);
 }

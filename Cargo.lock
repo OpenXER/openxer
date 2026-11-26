@@ -2429,7 +2429,7 @@ dependencies = [
 
 [[package]]
 name = "openxer-automation"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "encoding_rs",
@@ -2449,7 +2449,7 @@ dependencies = [
 
 [[package]]
 name = "openxer-chat"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "native-tls",
  "openssl",
@@ -2461,7 +2461,7 @@ dependencies = [
 
 [[package]]
 name = "openxer-desktop"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "eframe",
@@ -2482,11 +2482,11 @@ dependencies = [
 
 [[package]]
 name = "openxer-engine"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "openxer-interchange"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "calamine",
  "chrono",
@@ -2499,7 +2499,7 @@ dependencies = [
 
 [[package]]
 name = "openxer-xer"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "encoding_rs",

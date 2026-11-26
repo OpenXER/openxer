@@ -215,6 +215,53 @@ pub(crate) fn add_plan_baseline(
     Ok(row.id)
 }
 
+/// Store a second baseline (e.g. a mid-project rebaseline of the first-run
+/// sample) and assign it as the Secondary user baseline alongside `primary`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn add_secondary_baseline(
+    c: &rusqlite::Connection,
+    parent: i64,
+    project: &ProjectData,
+    primary: i64,
+    revision: &Document,
+    name: &str,
+    baseline_type: &str,
+    stamp: &str,
+) -> Result<i64, String> {
+    store::ensure(c)?;
+    let pid = project.model.project.proj_id;
+    let rows = store::list(c, parent)?;
+    let key = next_key(&project.updated_document(), pid, &rows);
+    let short = format!("{} - B2", project.model.project.name);
+    let copy = xb::copy_as_baseline(revision, pid, key, &short, name, stamp);
+    let info = xb::baseline_info(&copy, key);
+    let mut row = BaselineRow {
+        id: 0,
+        parent,
+        project_key: key,
+        short_name: short,
+        name: name.into(),
+        baseline_type: baseline_type.into(),
+        data_date: info.data_date,
+        added: stamp.into(),
+        updated: stamp.into(),
+        xer: copy.text(),
+        windows_encoding: project.document.windows_encoding,
+        import_batch: None,
+    };
+    row.id = store::put(c, &row)?;
+    store::set_user_baselines(
+        c,
+        parent,
+        UserBaselines([
+            Choice::Baseline(primary),
+            Choice::Baseline(row.id),
+            Choice::None,
+        ]),
+    )?;
+    Ok(row.id)
+}
+
 /// Store the baselines that a file carries for project `pid` (PROJECT rows
 /// whose `orig_proj_id` is `pid`) under workspace project `parent`. Baselines
 /// already stored with the same project id are kept as they are. Returns how
@@ -344,6 +391,9 @@ impl App {
 
     /// The open project's workspace row, if it has been saved.
     pub(crate) fn workspace_row(&self) -> Option<i64> {
+        if self.open_set.empty {
+            return None;
+        }
         let key = (
             self.project.source_name.clone(),
             self.project.model.project.proj_id,
@@ -360,6 +410,9 @@ impl App {
     }
 
     fn ensure_workspace_row(&mut self) -> Result<i64, String> {
+        if self.open_set.empty {
+            return Err("No project is open.".into());
+        }
         if let Some(id) = self.workspace_row() {
             return Ok(id);
         }

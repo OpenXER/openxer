@@ -303,6 +303,10 @@ impl App {
 
     /// F9 and Tools > Schedule: open the Schedule dialog.
     pub(crate) fn open_schedule_dialog(&mut self) {
+        if self.open_set.empty {
+            self.status = "Open or create a project before scheduling.".into();
+            return;
+        }
         if let Some((activity, field)) = self.edit_cell.take() {
             if !self.apply_cell(activity, field, &self.edit_text.clone()) {
                 return;

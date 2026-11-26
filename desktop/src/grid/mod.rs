@@ -335,23 +335,37 @@ impl App {
         )
     }
 
-    /// The lines of an activity picker: every activity whose ID or name
-    /// contains `query`, under the bands and in the order the table's Group
-    /// and Sort put them now. A picker offers every activity, so the
-    /// layout's filter, the WBS filter and the table's collapsed bands do
-    /// not apply; `collapsed` holds the bands folded in the picker itself.
-    /// Activities `skip` names are left out, and so is a band left empty.
+    #[cfg(test)]
     pub(crate) fn picker_lines(
         &self,
         query: &str,
         collapsed: &BTreeSet<String>,
         skip: &dyn Fn(usize) -> bool,
     ) -> Vec<PickLine> {
+        self.picker_lines_with(query, collapsed, None, skip).0
+    }
+
+    /// The lines of an activity picker: every activity whose ID or name
+    /// contains `query`, under the bands and in the order of `group_override`
+    /// (or the table's Group and Sort when `None`). A picker offers every
+    /// activity, so the layout's filter, the WBS filter and the table's
+    /// collapsed bands do not apply; `collapsed` holds the bands folded in
+    /// the picker itself. Activities `skip` names are left out, and so is a
+    /// band left empty. Also returns every band key in the uncollapsed tree
+    /// (for Collapse All).
+    pub(crate) fn picker_lines_with(
+        &self,
+        query: &str,
+        collapsed: &BTreeSet<String>,
+        group_override: Option<layout::GroupSort>,
+        skip: &dyn Fn(usize) -> bool,
+    ) -> (Vec<PickLine>, Vec<String>) {
         let shown = self.shown();
         let catalog = columns::catalog(shown);
         let ix = self.shared_index_at(self.shown_serial());
         let layout = layout::Layout {
             filter: filters::FilterSelection::default(),
+            group_sort: group_override.unwrap_or_else(|| self.grid.layout.group_sort.clone()),
             ..self.grid.layout.clone()
         };
         let built = group::build(
@@ -366,7 +380,7 @@ impl App {
                 users: &self.grid.user_filters,
             },
         );
-        built
+        let lines: Vec<PickLine> = built
             .rows
             .iter()
             .filter_map(|row| match *row {
@@ -384,7 +398,47 @@ impl App {
                         })
                 }
             })
-            .collect()
+            .collect();
+        // Every non-empty band key (including nested bands inside folded
+        // parents), so Collapse All collapses every level cleanly.
+        let all_bands: Vec<String> = if collapsed.is_empty() {
+            lines
+                .iter()
+                .filter_map(|l| match l {
+                    PickLine::Band { key, .. } => Some(key.clone()),
+                    PickLine::Activity(_) => None,
+                })
+                .collect()
+        } else {
+            let empty = BTreeSet::new();
+            let uncollapsed = group::build(
+                shown,
+                &ix,
+                &catalog,
+                &layout,
+                &Scope {
+                    query,
+                    wbs_filter: None,
+                    collapsed: &empty,
+                    users: &self.grid.user_filters,
+                },
+            );
+            uncollapsed
+                .rows
+                .iter()
+                .filter_map(|row| match *row {
+                    Row::Group(b) => {
+                        let band = &uncollapsed.bands[b];
+                        band.members
+                            .iter()
+                            .any(|&m| !skip(m))
+                            .then(|| band.key.clone())
+                    }
+                    Row::Activity(_) => None,
+                })
+                .collect()
+        };
+        (lines, all_bands)
     }
 
     /// Table rows of the active project in display order (rows of other open

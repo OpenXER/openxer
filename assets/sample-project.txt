@@ -5,7 +5,8 @@
 # Durations are working days of the activity's calendar: 5 is the 5-day
 # 8-hour office calendar, 6 the 6-day 10-hour construction calendar and 7 the
 # 7-day 10-hour calendar for concrete curing and the plant outage.
-# A duration of "start" or "finish" makes a milestone.
+# A duration of "start" or "finish" makes a milestone, "loe" makes a Level of
+# Effort activity, and "wbs" makes a WBS Summary activity.
 # Predecessors: ID (finish to start), "ID SS2" (start to start, 2 days lag on
 # the predecessor's calendar), "ID FF1", "ID FS1".
 # Resources: "ID units" where units is the crew size (units per hour) for
@@ -24,26 +25,48 @@ CY | Cubic Yard
 TON | Ton
 BAG | Bag
 LF | Linear Foot
+SF | Square Foot
+EA | Each
 
+# code | parent | name
+## obs
+RIVCAP | | Riverbend Capital Projects
+PMO | RIVCAP | M. Alvarez - Project Director
+ENGM | RIVCAP | D. Patel - Engineering Manager
+PROCM | RIVCAP | S. Novak - Procurement Manager
+CONM | RIVCAP | R. Kowalski - Construction Manager
+COMMM | RIVCAP | T. Brooks - Commissioning Manager
+
+# code | parent | name | rate | limit
 ## roles
-STAFF | Project Staff
-SUPV | Field Supervision
-CRAFT | Skilled Craft
-LABOR | General Labor
+R-ALL | | Project Delivery Roles | 100 | 80
+STAFF | R-ALL | Project Staff | 120 | 12
+SUPV | R-ALL | Field Supervision | 100 | 10
+CRAFT | R-ALL | Skilled Craft | 85 | 50
+LABOR | R-ALL | General Labor | 60 | 12
 
+# code | parent | name
 ## accounts
-1000 | Project Management and Engineering
-2000 | Direct Craft Labor
-3000 | Construction Equipment
-4000 | Permanent Materials
-5000 | Subcontracts and Vendor Services
-6000 | Permits, Freight and Other Expenses
+0000 | | Riverbend Process Water Upgrade Cost Accounts
+1000 | 0000 | Project Management and Engineering
+1100 | 1000 | Project Management and Controls
+1200 | 1000 | Engineering and Automation Design
+2000 | 0000 | Direct Craft Labor
+2100 | 2000 | Civil, Structural and Site Craft
+2200 | 2000 | Mechanical, Piping and Millwright Craft
+2300 | 2000 | Electrical and Instrumentation Craft
+3000 | 0000 | Construction Equipment
+4000 | 0000 | Permanent Materials
+5000 | 0000 | Subcontracts and Vendor Services
+6000 | 0000 | Permits, Freight and Other Expenses
 
 ## expense categories
 Permits and Fees
 Freight
 Vendor Services
 Testing and Inspection
+Subcontract Services
+Insurance and Bonds
 
 ## topics
 Scope
@@ -53,216 +76,487 @@ Safety
 Quality and Inspection
 Field Notes
 Change Notes
+Commissioning Notes
 
-# id | name | type (labor, nonlabor, material) | unit | calendar | rate | limit | role | account
+## baseline types
+Initial Baseline
+Mid-Project Rebaseline
+Owner Sign-Off Baseline
+
+# type | short | name | assign
+## project codes
+Facility | RIV | Riverbend Manufacturing Plant | yes
+Facility | NORTH | Northyard Utilities Complex | no
+Capital Program | WATER | Process Water Reliability Program | yes
+Capital Program | POWER | Substation Modernization Program | no
+Contract Type | EPC-GMP | EPC Guaranteed Maximum Price | yes
+Contract Type | T-AND-M | Time and Materials | no
+Region | MW | Midwest Operations | yes
+Region | GL | Great Lakes Operations | no
+Priority Tier | T1 | Tier 1 - Plant Outage Critical | yes
+Priority Tier | T2 | Tier 2 - Standard Capital | no
+
+# name | amount | share | description
+## funding
+Corporate Capital Budget | 3600000 | 65 | Approved FY2026-2027 capital appropriation for plant reliability
+Plant Reliability Reserve | 1400000 | 25 | Operations reserve allocated for cooling and process water upgrades
+Environmental Compliance Grant | 550000 | 10 | State industrial water reuse and filtration efficiency grant
+
+# type | short | name
+## resource codes
+Trade Group | MGMT | Management and Controls
+Trade Group | ENGR | Design and Automation Engineering
+Trade Group | CIV | Civil and Structural Craft
+Trade Group | MECH | Mechanical and Piping Craft
+Trade Group | ELEC | Electrical and Instrumentation Craft
+Trade Group | EQUIP | Construction Equipment
+Trade Group | MATL | Bulk and Permanent Materials
+Resource Source | INT | Internal Staff and Self-Perform
+Resource Source | SUB | Specialty Subcontractor
+Resource Source | RENT | Rented Equipment Fleet
+Resource Source | SUPP | Material Supplier
+
+# type | short | name
+## assignment codes
+Shift | OFFICE | 5-Day 8-Hour Office Shift
+Shift | DAY | 6-Day 10-Hour Construction Shift
+Shift | OUTAGE | 7-Day 10-Hour Outage and Curing Shift
+Work Location | HOME | Home Office and Vendor Shop
+Work Location | SHOP | Piping Fabrication Shop
+Work Location | FIELD | Plant Field Construction
+Billing Type | DIRECT | Direct Craft Labor
+Billing Type | INDIRECT | Management and Field Indirect
+Billing Type | EQUIP | Construction Equipment Rental
+Billing Type | MATL | Permanent Bulk Material
+
+# id | parent | name | type (group_labor, group_nonlabor, group_material, labor, nonlabor, material) | unit | calendar | rate | limit | role | account | trade | source
 ## resources
-PM | Project Manager | labor | | 5 | 135 | 1 | STAFF | 1000
-PE | Project Engineer | labor | | 5 | 110 | 2 | STAFF | 1000
-ENGR | Design Engineer | labor | | 5 | 125 | 4 | STAFF | 1000
-BUYER | Buyer and Expeditor | labor | | 5 | 85 | 1 | STAFF | 1000
-SUPT | Construction Superintendent | labor | | 6 | 115 | 1 | SUPV | 2000
-GF | General Foreman | labor | | 6 | 98 | 3 | SUPV | 2000
-FE | Field Engineer | labor | | 6 | 95 | 2 | SUPV | 2000
-QC | Quality Control Inspector | labor | | 6 | 95 | 2 | SUPV | 2000
-LAB | Laborer | labor | | 6 | 58 | 8 | LABOR | 2000
-CARP | Carpenter | labor | | 6 | 72 | 6 | CRAFT | 2000
-IW | Ironworker | labor | | 6 | 82 | 7 | CRAFT | 2000
-PF | Pipefitter | labor | | 6 | 88 | 14 | CRAFT | 2000
-WLD | Pipe Welder | labor | | 6 | 92 | 6 | CRAFT | 2000
-ELEC | Electrician | labor | | 6 | 86 | 10 | CRAFT | 2000
-INST | Instrument Technician | labor | | 6 | 90 | 4 | CRAFT | 2000
-MW | Millwright | labor | | 6 | 85 | 4 | CRAFT | 2000
-PNT | Painter | labor | | 6 | 66 | 3 | CRAFT | 2000
-INSUL | Insulator | labor | | 6 | 70 | 4 | CRAFT | 2000
-OPR | Equipment Operator | labor | | 6 | 80 | 3 | CRAFT | 2000
-CXE | Commissioning Engineer | labor | | 6 | 120 | 2 | STAFF | 1000
-CR90 | Crane, 90 Ton Hydraulic | nonlabor | | 6 | 310 | 1 | | 3000
-CR250 | Crane, 250 Ton Crawler | nonlabor | | 6 | 650 | 1 | | 3000
-LIFT | Manlift, 60 Foot | nonlabor | | 6 | 45 | 5 | | 3000
-WMACH | Welding Machine | nonlabor | | 6 | 18 | 6 | | 3000
-EXC | Excavator | nonlabor | | 6 | 150 | 1 | | 3000
-HYD | Hydrotest Pump and Gauges | nonlabor | | 6 | 35 | 1 | | 3000
-CONC | Ready-Mix Concrete | material | CY | 6 | 185 | | | 4000
-REBAR | Reinforcing Steel | material | TON | 6 | 1450 | | | 4000
-GROUT | Non-Shrink Grout | material | BAG | 6 | 42 | | | 4000
-CABLE | Power Cable, 600 Volt | material | LF | 6 | 9.5 | | | 4000
+R-STAFF | | Project Staff and Engineering | group_labor | | 5 | 0 | | | 1000 | MGMT | INT
+PM | R-STAFF | Project Manager | labor | | 5 | 135 | 1 | STAFF | 1100 | MGMT | INT
+PE | R-STAFF | Project Engineer | labor | | 5 | 110 | 3 | STAFF | 1100 | MGMT | INT
+SCHED | R-STAFF | Lead Project Scheduler | labor | | 5 | 115 | 1 | STAFF | 1100 | MGMT | INT
+DC | R-STAFF | Document Controller | labor | | 5 | 78 | 1 | STAFF | 1100 | MGMT | INT
+ENGR | R-STAFF | Design Engineer | labor | | 5 | 125 | 6 | STAFF | 1200 | ENGR | INT
+PROC_E | R-STAFF | Process Engineer | labor | | 5 | 130 | 2 | STAFF | 1200 | ENGR | INT
+AUTO | R-STAFF | Automation and DCS Engineer | labor | | 5 | 132 | 2 | STAFF | 1200 | ENGR | SUB
+BUYER | R-STAFF | Buyer and Expeditor | labor | | 5 | 85 | 2 | STAFF | 1100 | MGMT | INT
+CXE | R-STAFF | Commissioning Engineer | labor | | 6 | 120 | 3 | STAFF | 1200 | ENGR | INT
+R-SUPV | | Field Supervision and QA/QC | group_labor | | 6 | 0 | | | 2000 | MGMT | INT
+SUPT | R-SUPV | Construction Superintendent | labor | | 6 | 115 | 2 | SUPV | 2000 | MGMT | INT
+GF | R-SUPV | General Foreman | labor | | 6 | 98 | 4 | SUPV | 2000 | MGMT | INT
+FE | R-SUPV | Field Engineer | labor | | 6 | 95 | 3 | SUPV | 2000 | MGMT | INT
+QC | R-SUPV | Quality Control Inspector | labor | | 6 | 95 | 3 | SUPV | 2000 | MGMT | INT
+HSE | R-SUPV | Safety Coordinator | labor | | 6 | 92 | 2 | SUPV | 2000 | MGMT | INT
+R-CRAFT | | Direct Craft Labor | group_labor | | 6 | 0 | | | 2000 | CIV | INT
+LAB | R-CRAFT | Laborer | labor | | 6 | 58 | 12 | LABOR | 2100 | CIV | INT
+CARP | R-CRAFT | Carpenter | labor | | 6 | 72 | 8 | CRAFT | 2100 | CIV | INT
+IW | R-CRAFT | Ironworker | labor | | 6 | 82 | 10 | CRAFT | 2100 | CIV | INT
+CFIN | R-CRAFT | Concrete Finisher | labor | | 6 | 76 | 6 | CRAFT | 2100 | CIV | INT
+PF | R-CRAFT | Pipefitter | labor | | 6 | 88 | 18 | CRAFT | 2200 | MECH | SUB
+WLD | R-CRAFT | Pipe Welder | labor | | 6 | 92 | 8 | CRAFT | 2200 | MECH | SUB
+MW | R-CRAFT | Millwright | labor | | 6 | 85 | 6 | CRAFT | 2200 | MECH | SUB
+ELEC | R-CRAFT | Electrician | labor | | 6 | 86 | 14 | CRAFT | 2300 | ELEC | SUB
+INST | R-CRAFT | Instrument Technician | labor | | 6 | 90 | 6 | CRAFT | 2300 | ELEC | SUB
+PNT | R-CRAFT | Painter and Coater | labor | | 6 | 66 | 5 | CRAFT | 2200 | MECH | SUB
+INSUL | R-CRAFT | Insulator | labor | | 6 | 70 | 6 | CRAFT | 2200 | MECH | SUB
+OPR | R-CRAFT | Equipment Operator | labor | | 6 | 80 | 5 | CRAFT | 2100 | CIV | INT
+R-EQUIP | | Construction Equipment Fleet | group_nonlabor | | 6 | 0 | | | 3000 | EQUIP | RENT
+CR90 | R-EQUIP | Crane, 90 Ton Hydraulic | nonlabor | | 6 | 310 | 2 | | 3000 | EQUIP | RENT
+CR250 | R-EQUIP | Crane, 250 Ton Crawler | nonlabor | | 6 | 650 | 1 | | 3000 | EQUIP | RENT
+LIFT | R-EQUIP | Manlift, 60 Foot | nonlabor | | 6 | 45 | 8 | | 3000 | EQUIP | RENT
+WMACH | R-EQUIP | Welding Machine | nonlabor | | 6 | 18 | 10 | | 3000 | EQUIP | RENT
+EXC | R-EQUIP | Excavator | nonlabor | | 6 | 150 | 2 | | 3000 | EQUIP | RENT
+HYD | R-EQUIP | Hydrotest Pump and Gauges | nonlabor | | 6 | 35 | 2 | | 3000 | EQUIP | RENT
+FORK | R-EQUIP | Telehandler, 10000 lb | nonlabor | | 6 | 55 | 2 | | 3000 | EQUIP | RENT
+COMP | R-EQUIP | Air Compressor, 375 CFM | nonlabor | | 6 | 40 | 2 | | 3000 | EQUIP | RENT
+R-MAT | | Bulk and Permanent Materials | group_material | | 6 | 0 | | | 4000 | MATL | SUPP
+CONC | R-MAT | Ready-Mix Concrete | material | CY | 6 | 185 | | | 4000 | MATL | SUPP
+REBAR | R-MAT | Reinforcing Steel | material | TON | 6 | 1450 | | | 4000 | MATL | SUPP
+GROUT | R-MAT | Non-Shrink Grout | material | BAG | 6 | 42 | | | 4000 | MATL | SUPP
+CABLE | R-MAT | Power Cable, 600 Volt | material | LF | 6 | 9.5 | | | 4000 | MATL | SUPP
+FIBER | R-MAT | Fiber Optic Cable, 12-Strand | material | LF | 6 | 6.25 | | | 4000 | MATL | SUPP
+SSPIPE | R-MAT | Stainless Steel Pipe, 4-Inch | material | LF | 6 | 68 | | | 4000 | MATL | SUPP
+EPOXY | R-MAT | Chemical Containment Coating | material | SF | 6 | 14 | | | 4000 | MATL | SUPP
 
-# code | parent | name
+# code | parent | name | obs | orig_budget
 ## wbs
-PM | | Project Management
-ENG | | Engineering Deliverables
-CS | ENG | Civil and Structural Drawings
-ME | ENG | Piping and Mechanical Drawings
-EI | ENG | Electrical and Instrument Drawings
-PROC | | Procurement
-LL | PROC | Long-Lead Equipment
-BM | PROC | Bulk Materials
-CONST | | Construction
-SITE | CONST | Site Preparation and Temporary Facilities
-FAB | CONST | Piping Fabrication Shop
-A100 | CONST | Area 100 Pump Station
-A100.DEMO | A100 | Demolition
-A100.CIVIL | A100 | Civil and Structural
-A100.EQUIP | A100 | Equipment
-A100.PIPE | A100 | Piping
-A100.ELEC | A100 | Electrical
-A100.INST | A100 | Instrumentation
-A100.PAINT | A100 | Paint and Insulation
-A200 | CONST | Area 200 Pipe Rack
-A200.CIVIL | A200 | Civil and Structural
-A200.PIPE | A200 | Piping
-A200.ELEC | A200 | Electrical
-A200.PAINT | A200 | Paint and Insulation
-A300 | CONST | Area 300 Heat Exchanger and Header Tie-ins
-A300.DEMO | A300 | Demolition
-A300.CIVIL | A300 | Civil and Structural
-A300.EQUIP | A300 | Equipment
-A300.PIPE | A300 | Piping
-A300.TIE | A300 | Header Tie-ins (Plant Outage)
-A300.ELEC | A300 | Electrical
-A300.INST | A300 | Instrumentation
-A300.PAINT | A300 | Paint and Insulation
-A400 | CONST | Area 400 Electrical Room
-A400.CIVIL | A400 | Civil and Structural
-A400.ELEC | A400 | Power Distribution
-COMM | | Commissioning and Turnover
-MC | COMM | Mechanical Completion
-SU | COMM | Commissioning and Startup
-TO | COMM | Turnover and Closeout
+PM | | Project Management | PMO | 520000
+PM.CTRL | PM | Project Controls and Reporting | PMO | 180000
+PM.SAFE | PM | Safety, Permits and Environmental | PMO | 140000
+PM.QA | PM | Quality Assurance and Document Control | PMO | 90000
+PM.LOE | PM | Management and Site Support (LOE) | PMO | 110000
+ENG | | Engineering Deliverables | ENGM | 680000
+PROC_ENG | ENG | Process Engineering and P&IDs | ENGM | 145000
+CS | ENG | Civil and Structural Drawings | ENGM | 150000
+ME | ENG | Piping and Mechanical Drawings | ENGM | 165000
+EI | ENG | Electrical, Instrument and DCS Drawings | ENGM | 140000
+ENG.BIM | ENG | 3D Model, Clash Reviews and Work Packages | ENGM | 80000
+PROC | | Procurement and Subcontracts | PROCM | 640000
+LL | PROC | Long-Lead Equipment | PROCM | 260000
+BM | PROC | Bulk Materials | PROCM | 175000
+SUB | PROC | Subcontracts and Specialty Vendors | PROCM | 115000
+EXP | PROC | Expediting, Inspection and Logistics | PROCM | 90000
+CONST | | Construction | CONM | 2950000
+SITE | CONST | Site Preparation and Temporary Facilities | CONM | 195000
+FAB | CONST | Piping Fabrication Shop | CONM | 340000
+A100 | CONST | Area 100 Pump Station | CONM | 490000
+A100.DEMO | A100 | Demolition | CONM | 85000
+A100.CIVIL | A100 | Civil and Structural | CONM | 115000
+A100.EQUIP | A100 | Equipment | CONM | 75000
+A100.PIPE | A100 | Piping | CONM | 110000
+A100.ELEC | A100 | Electrical | CONM | 60000
+A100.INST | A100 | Instrumentation | CONM | 30000
+A100.PAINT | A100 | Paint and Insulation | CONM | 15000
+A200 | CONST | Area 200 Pipe Rack | CONM | 520000
+A200.CIVIL | A200 | Civil and Structural | CONM | 210000
+A200.PIPE | A200 | Piping | CONM | 195000
+A200.ELEC | A200 | Electrical | CONM | 65000
+A200.PAINT | A200 | Paint and Insulation | CONM | 50000
+A300 | CONST | Area 300 Heat Exchanger and Header Tie-ins | CONM | 460000
+A300.DEMO | A300 | Demolition | CONM | 25000
+A300.CIVIL | A300 | Civil and Structural | CONM | 80000
+A300.EQUIP | A300 | Equipment | CONM | 65000
+A300.PIPE | A300 | Piping | CONM | 95000
+A300.TIE | A300 | Header Tie-ins (Plant Outage) | CONM | 85000
+A300.ELEC | A300 | Electrical | CONM | 35000
+A300.INST | A300 | Instrumentation | CONM | 50000
+A300.PAINT | A300 | Paint and Insulation | CONM | 25000
+A400 | CONST | Area 400 Electrical Room | CONM | 240000
+A400.CIVIL | A400 | Civil and Structural | CONM | 55000
+A400.ELEC | A400 | Power Distribution | CONM | 185000
+A500 | CONST | Area 500 Chemical Feed and Filtration Skid | CONM | 440000
+A500.CIVIL | A500 | Civil and Containment Pad | CONM | 95000
+A500.EQUIP | A500 | Filtration Skid and Chemical Tanks | CONM | 105000
+A500.PIPE | A500 | Process and Chemical Feed Piping | CONM | 115000
+A500.ELEC | A500 | Electrical Power and Heat Trace | CONM | 55000
+A500.INST | A500 | Analyzers and Control Instrumentation | CONM | 45000
+A500.PAINT | A500 | Coatings and Insulation | CONM | 25000
+A600 | CONST | Area 600 Control Room, DCS and Plant Utilities | CONM | 265000
+A600.DCS | A600 | Control System Cabinets and Fiber Backbone | CONM | 110000
+A600.UTIL | A600 | Plant Air, Potable Water and Drain Tie-ins | CONM | 85000
+A600.CIVIL | A600 | Underground Ductbank and Paving Restoration | CONM | 70000
+COMM | | Commissioning and Turnover | COMMM | 405000
+PRECOM | COMM | Pre-Commissioning, Flushing and Passivation | COMMM | 105000
+MC | COMM | Mechanical Completion | COMMM | 95000
+SU | COMM | Commissioning and Startup | COMMM | 125000
+TO | COMM | Turnover and Closeout | COMMM | 80000
+
+# wbs | step | weight | complete
+## wbs steps
+ENG | 30% Design and P&ID Freeze | 20 | Y
+ENG | 60% 3D Model and HAZOP Sign-Off | 30 | Y
+ENG | 90% Owner Review Resolution | 25 | Y
+ENG | Issued for Construction (IFC) Release | 25 | Y
+PROC | Long-Lead Equipment POs Issued | 30 | Y
+PROC | Critical Vendor Drawings Approved | 30 | Y
+PROC | Subcontracts Awarded | 20 | Y
+PROC | Major Equipment Delivered to Site | 20 | N
+A100 | Existing Pumps Demolished | 20 | N
+A100 | Pump Foundations Cured | 25 | N
+A100 | Pumps Set and Grouted | 25 | N
+A100 | Area 100 Mechanical Completion Signed | 30 | N
+A200 | Rack Footings Completed | 25 | Y
+A200 | Pipe Rack Steel Erected | 25 | N
+A200 | 10-Inch Header Hydrotested | 30 | N
+A200 | Heat Tracing and Insulation Complete | 20 | N
+A300 | Heat Exchanger E-301 Set on Pad | 30 | N
+A300 | Plant Outage Tie-Ins TI-01 to TI-03 Complete | 50 | N
+A300 | Tie-In Leak Test Accepted | 20 | N
+A500 | Chemical Containment Pad Coated | 25 | N
+A500 | Filtration Skid FL-501 Installed | 35 | N
+A500 | Analyzers Calibrated and Loop Checked | 40 | N
+COMM | All Systems Mechanically Complete | 35 | N
+COMM | DCS SAT and Wet Commissioning Complete | 35 | N
+COMM | 30-Day Reliability Run Accepted | 30 | N
+
+# wbs (PROJECT or code) | number | date | amount | status | responsible | reason
+## budget log
+PROJECT | AUTH-000 | 2026-06-01 07:00 | 5195000 | Approved | M. Alvarez | Initial Board Capital Authorization for Riverbend Process Water Upgrade
+PROJECT | CO-001 | 2026-08-14 14:00 | 145000 | Approved | M. Alvarez | Add pipe rack freeze protection heat tracing and insulation per winter operations review
+PROJECT | CO-002 | 2026-09-18 11:00 | 210000 | Approved | D. Patel | Upgrade Area 500 containment curb and dual-wall chemical dosing lines per state grant terms
+PROJECT | CO-003 | 2026-10-02 15:00 | 68500 | Pending | R. Kowalski | Extended 250-ton crawler crane timber matting and soft-soil subgrade stabilization at Area 300
+PROJECT | CO-004 | 2026-09-24 10:00 | 42000 | Rejected | S. Novak | Expedited air-ride freight premium for transformer TX-401 (declined, standard transit holds float)
+PROJECT | CO-005 | 2026-10-09 16:00 | 54000 | Pending | T. Brooks | Redundant DCS analog I/O modules and ring-topology fiber backbone for Area 500 analyzers
+A200 | CO-001A | 2026-08-14 14:00 | 145000 | Approved | R. Kowalski | Area 200 heat tracing and jacketing allocation under CO-001
+A500 | CO-002A | 2026-09-18 11:00 | 210000 | Approved | R. Kowalski | Area 500 chemical containment epoxy and stainless header upgrade under CO-002
+
+# wbs (PROJECT or code) | start | end | spend | benefit
+## spending plan
+PROJECT | 2026-06-01 00:00 | 2026-06-30 23:59 | 240000 | 0
+PROJECT | 2026-07-01 00:00 | 2026-07-31 23:59 | 380000 | 0
+PROJECT | 2026-08-01 00:00 | 2026-08-31 23:59 | 490000 | 0
+PROJECT | 2026-09-01 00:00 | 2026-09-30 23:59 | 560000 | 0
+PROJECT | 2026-10-01 00:00 | 2026-10-31 23:59 | 640000 | 0
+PROJECT | 2026-11-01 00:00 | 2026-11-30 23:59 | 720000 | 0
+PROJECT | 2026-12-01 00:00 | 2026-12-31 23:59 | 740000 | 0
+PROJECT | 2027-01-01 00:00 | 2027-01-31 23:59 | 680000 | 0
+PROJECT | 2027-02-01 00:00 | 2027-02-28 23:59 | 520000 | 0
+PROJECT | 2027-03-01 00:00 | 2027-03-31 23:59 | 340000 | 180000
+PROJECT | 2027-04-01 00:00 | 2027-04-30 23:59 | 240000 | 320000
+PROJECT | 2027-05-01 00:00 | 2027-05-31 23:59 | 0 | 360000
 
 # id | wbs | calendar | duration | name | predecessors | resources
 ## activities
+# --- Project Management, Controls, Safety, QA & LOE ---
 MS0000 | PM | 5 | start | Notice to proceed | |
-PM0100 | PM | 5 | 2 | Hold project kickoff meeting with owner and plant operations | MS0000 | PM 1, PE 1, SUPT 1
-PM0110 | PM | 5 | 10 | Submit project schedule and cost breakdown for owner approval | PM0100 | PM 0.5, PE 1
-PM0120 | PM | 5 | 12 | Prepare and submit site safety plan and job hazard analyses | PM0100 | PE 0.5, SUPT 1
-PM0130 | PM | 5 | 25 | Obtain county building and excavation permits | PM0100 | PE 0.5
-PM0140 | PM | 5 | 1 | Hold pre-construction safety meeting with plant operations | PM0120 | PM 1, SUPT 1, GF 1
+PM0100 | PM | 5 | 2 | Hold project kickoff meeting with owner and plant operations | MS0000 | PM 1, PE 1, SUPT 1, SCHED 1
+PM0105 | PM.CTRL | 5 | 5 | Establish WBS, cost account structure and project controls plan | PM0100 | PM 0.5, SCHED 1, PE 0.5
+PM0110 | PM.CTRL | 5 | 10 | Submit project schedule and cost breakdown for owner approval | PM0105 | PM 0.5, PE 1, SCHED 1
+PM0115 | PM.CTRL | 5 | 4 | Baseline schedule review and formal owner baseline sign-off | PM0110 | PM 0.5, SCHED 1
+PM0118 | PM.CTRL | 5 | finish | Baseline schedule and cost plan approved | PM0115 |
+PM0120 | PM.SAFE | 5 | 12 | Prepare and submit site safety plan and job hazard analyses | PM0100 | PE 0.5, SUPT 1, HSE 1
+PM0125 | PM.SAFE | 5 | 6 | Prepare environmental spill prevention and stormwater plan | PM0100 | HSE 1, PE 0.5
+PM0130 | PM.SAFE | 5 | 25 | Obtain county building and excavation permits | PM0100 | PE 0.5, PM 0.25
+PM0135 | PM.SAFE | 5 | 15 | Obtain state industrial water filtration and discharge permit addendum | PM0125 | PROC_E 0.5, HSE 0.5
+PM0140 | PM.SAFE | 5 | 1 | Hold pre-construction safety meeting with plant operations | PM0120, PM0125 | PM 1, SUPT 1, GF 1, HSE 1
+PM0150 | PM.QA | 5 | 8 | Issue project quality assurance plan and weld inspection matrix | PM0100 | QC 1, PE 0.5
+PM0155 | PM.QA | 5 | 5 | Configure document control register and submittal tracking portal | PM0100 | DC 1, PE 0.25
+PM0160 | PM.QA | 5 | 6 | Establish inspection and test plan (ITP) hold points with owner QA | PM0150, PM0155 | QC 1, PM 0.25
+PM0200 | PM.CTRL | 5 | 5 | Conduct monthly cost forecast and schedule update - Month 2 | PM0118 | SCHED 0.5, PM 0.25
+PM0205 | PM.CTRL | 5 | 4 | Conduct monthly cost forecast and schedule update - Month 3 | PM0200, EN0080 | SCHED 0.5, PM 0.25
+PM0210 | PM.CTRL | 5 | 5 | Conduct monthly cost forecast and schedule update - Month 4 | PM0205, EN0240 | SCHED 0.5, PM 0.25
+PM0212 | PM.CTRL | 5 | 4 | Conduct monthly cost forecast and schedule update - Month 5 | PM0210, CV2040 | SCHED 0.5, PM 0.25
+PM0214 | PM.CTRL | 5 | 4 | Conduct monthly cost forecast and schedule update - Month 6 | PM0212, DM0900 | SCHED 0.5, PM 0.25
+PM0216 | PM.CTRL | 5 | 4 | Conduct monthly cost forecast and schedule update - Month 7 | PM0214, CV1040 | SCHED 0.5, PM 0.25
+PM0218 | PM.QA | 5 | 3 | Perform mid-project quality management and weld traceability audit | PM0160, PP0130 | QC 1, DC 0.5, PE 0.5
+PM0220 | PM.CTRL | 5 | 5 | Prepare February plant outage readiness and execution playbook | EN0220, PR0320, PM0216 | PM 0.5, SUPT 1, SCHED 1, HSE 0.5
+PM0230 | PM.CTRL | 5 | 3 | Conduct plant outage tabletop rehearsal with owner operations | PM0220, PM0218 | PM 1, SUPT 1, GF 1, CXE 1, HSE 1
+LOE010 | PM.LOE | 5 | loe | Level of effort: project management and controls oversight | MS0000 SS0, PM0920 FF0 | PM 0.35, SCHED 0.35
+LOE020 | PM.LOE | 6 | loe | Level of effort: field supervision and site safety management | ST0100 SS0, PM0900 FF0 | SUPT 0.4, HSE 0.5
+LOE030 | PM.LOE | 5 | loe | Level of effort: QA/QC coordination and document control | PM0155 SS0, PM0910 FF0 | DC 0.4, QC 0.25
+LOE040 | PM.LOE | 6 | loe | Level of effort: temporary site utilities, trailers and housekeeping | ST0100 SS0, PM0900 FF0 | LAB 0.5
+LOE050 | PM.LOE | 6 | loe | Level of effort: excavation dewatering and environmental monitoring | CV3000 SS0, CV6030 FF0 | LAB 0.3, HSE 0.2
+
+# --- Engineering Deliverables ---
+EN0050 | PROC_ENG | 5 | 12 | Perform hydraulic network analysis and pump head calculations | PM0100 | PROC_E 1.5, ENGR 0.5
+EN0060 | PROC_ENG | 5 | 15 | Develop process flow diagrams and P&IDs for all areas | EN0050 | PROC_E 1.5, ENGR 1
+EN0070 | PROC_ENG | 5 | 4 | Conduct HAZOP safety study with plant operations and process team | EN0060 | PROC_E 1, ENGR 1, HSE 1, PM 0.5
+EN0080 | PROC_ENG | 5 | 8 | Resolve HAZOP action items and issue IFC P&IDs | EN0070 | PROC_E 1.5, ENGR 0.5
+EN0085 | PROC_ENG | 5 | finish | Process P&IDs issued for construction | EN0080 |
+EN0090 | PROC_ENG | 5 | 10 | Prepare chemical feed dosing and filtration process specifications | EN0060 | PROC_E 1, ENGR 0.5
+EN0092 | PROC_ENG | 5 | 6 | Prepare process water valve, strainer and specialty item datasheets | EN0060 | PROC_E 1, ENGR 0.5
+EN0095 | PROC_ENG | 5 | 5 | Prepare chemical compatibility and material selection report | EN0090 | PROC_E 1
 EN0100 | CS | 5 | 25 | Design pump foundations, rack footings and equipment pads | PM0100 | ENGR 2, PE 0.5
+EN0105 | CS | 5 | 14 | Design Area 500 chemical containment slab, sump and curbing | EN0090, EN0095, EN0110 | ENGR 1.5
 EN0110 | CS | 5 | 5 | Review soil report for pump foundation bearing pressure | EN0100 SS5 | ENGR 1
-EN0120 | CS | 5 | 10 | Resolve owner comments on civil and structural drawings | EN0100, EN0110 | ENGR 1
-EN0130 | CS | 5 | finish | Civil and structural drawings issued for construction | EN0120 |
+EN0112 | CS | 5 | 6 | Perform wind and seismic lateral load check on 6-bent pipe rack | EN0110 | ENGR 1
+EN0115 | CS | 5 | 12 | Design pipe rack structural steel framing and anchor bolt details | EN0112 | ENGR 1.5
+EN0118 | CS | 5 | 8 | Design underground electrical and fiber ductbank routing | EN0110 | ENGR 1
+EN0120 | CS | 5 | 10 | Resolve owner comments on civil and structural drawings | EN0100, EN0110, EN0112, EN0115 | ENGR 1
+EN0125 | CS | 5 | 6 | Resolve owner comments on Area 500 containment and ductbank drawings | EN0105, EN0118 | ENGR 1
+EN0130 | CS | 5 | finish | Civil and structural drawings issued for construction | EN0120, EN0125 |
 EN0200 | ME | 5 | 35 | Design pump station, pipe rack and heat exchanger piping | PM0100 | ENGR 2, PE 0.5
-EN0210 | ME | 5 | 10 | Resolve owner comments on piping drawings | EN0200 | ENGR 1
+EN0205 | ME | 5 | 18 | Design Area 500 filtration skid and chemical feed piping layout | EN0080, EN0090, EN0092 | ENGR 1.5, PROC_E 0.5
+EN0208 | ME | 5 | 10 | Perform pipe stress and thermal expansion analysis on 10-inch header | EN0050 | ENGR 1
+EN0209 | ME | 5 | 8 | Design pipe hanger, shoe and spring support schedule | EN0208 | ENGR 1
+EN0210 | ME | 5 | 10 | Resolve owner comments on piping drawings | EN0200, EN0208, EN0209 | ENGR 1
+EN0215 | ME | 5 | 6 | Resolve owner comments on Area 500 chemical and filtration piping | EN0205 | ENGR 1
 EN0220 | ME | 5 | 8 | Prepare piping isometrics and tie-in package for the outage | EN0210 | ENGR 1.5
-EN0230 | ME | 5 | 5 | Prepare hydrotest packages with test limits and test pressures | EN0220 | ENGR 1, QC 0.5
-EN0240 | ME | 5 | finish | Piping drawings issued for construction | EN0220 |
+EN0225 | ME | 5 | 6 | Prepare Area 500 stainless and chemical piping isometrics | EN0215 | ENGR 1
+EN0230 | ME | 5 | 5 | Prepare hydrotest packages with test limits and test pressures | EN0220, EN0225 | ENGR 1, QC 0.5
+EN0240 | ME | 5 | finish | Piping drawings issued for construction | EN0220, EN0225 |
 EN0300 | EI | 5 | 30 | Design one-line diagram, motor control center schedule and cable schedule | PM0100 | ENGR 1.5
+EN0302 | EI | 5 | 8 | Perform cable tray fill and voltage drop sizing calculations | EN0050 | ENGR 1
+EN0305 | EI | 5 | 12 | Perform short-circuit, coordination and arc flash engineering study | EN0050 | ENGR 1
+EN0308 | EI | 5 | 8 | Design motor starter control schematics and VFD interlock wiring | EN0305 | ENGR 1, AUTO 0.5
 EN0310 | EI | 5 | 25 | Design instrument loop drawings, instrument index and hookups | EN0200 SS15 | ENGR 1
-EN0320 | EI | 5 | 10 | Resolve owner comments on electrical and instrument drawings | EN0300, EN0310 | ENGR 1
-EN0330 | EI | 5 | 5 | Prepare cable pull cards and termination schedules | EN0320 | ENGR 1
-EN0340 | EI | 5 | finish | Electrical and instrument drawings issued for construction | EN0320 |
-EN0400 | ENG | 5 | 3 | Issue construction work packages for Area 100 pump station | EN0130, EN0240 | PE 1, FE 1
-EN0410 | ENG | 5 | 3 | Issue construction work packages for Area 200 pipe rack | EN0130, EN0240 | PE 1, FE 1
-EN0420 | ENG | 5 | 3 | Issue construction work packages for Area 300 heat exchanger and tie-ins | EN0240, EN0340 | PE 1, FE 1
+EN0315 | EI | 5 | 16 | Develop DCS control narrative, I/O list and cause-and-effect matrix | EN0080 | AUTO 1.5, PROC_E 0.5
+EN0318 | EI | 5 | 12 | Design Area 500 analyzer panels, VFD wiring and fiber network topology | EN0315 | AUTO 1, ENGR 1
+EN0320 | EI | 5 | 10 | Resolve owner comments on electrical and instrument drawings | EN0300, EN0302, EN0305, EN0308, EN0310 | ENGR 1
+EN0325 | EI | 5 | 8 | Resolve owner comments on DCS I/O list and Area 500 E&I package | EN0315, EN0318 | AUTO 1, ENGR 0.5
+EN0330 | EI | 5 | 5 | Prepare cable pull cards and termination schedules | EN0320, EN0325 | ENGR 1
+EN0335 | EI | 5 | 15 | Program DCS graphics, alarms and pump lead-lag control logic | EN0325 | AUTO 1.5
+EN0340 | EI | 5 | finish | Electrical and instrument drawings issued for construction | EN0320, EN0325 |
+EN0350 | ENG.BIM | 5 | 5 | Conduct 30 percent 3D model design review with owner | EN0050, EN0110 | ENGR 1, PE 1, PROC_E 0.5
+EN0360 | ENG.BIM | 5 | 5 | Conduct 60 percent 3D model clash detection and constructability review | EN0350, EN0060 | ENGR 1, PE 1, SUPT 0.5
+EN0370 | ENG.BIM | 5 | 5 | Conduct 90 percent 3D model review and lock pipe rack elevations | EN0360, EN0210 | ENGR 1, PE 1, SUPT 0.5
+EN0400 | ENG.BIM | 5 | 3 | Issue construction work packages for Area 100 pump station | EN0130, EN0240, EN0370 | PE 1, FE 1, DC 0.5
+EN0410 | ENG.BIM | 5 | 3 | Issue construction work packages for Area 200 pipe rack | EN0130, EN0240, EN0370 | PE 1, FE 1, DC 0.5
+EN0420 | ENG.BIM | 5 | 3 | Issue construction work packages for Area 300 heat exchanger and tie-ins | EN0240, EN0340 | PE 1, FE 1, DC 0.5
+EN0430 | ENG.BIM | 5 | 3 | Issue construction work packages for Area 500 filtration skid and Area 600 DCS | EN0085, EN0130, EN0240, EN0340 | PE 1, FE 1, DC 0.5
+
+# --- Procurement and Subcontracts ---
 PR0100 | LL | 5 | 8 | Issue purchase order for process water pumps P-101A and P-101B | EN0200 SS5 | BUYER 0.5, ENGR 0.25
-PR0110 | LL | 5 | 20 | Review and approve pump vendor drawings | PR0100 | ENGR 0.5, BUYER 0.25
+PR0110 | LL | 5 | 20 | Review and approve pump vendor drawings | PR0100 | ENGR 0.5, BUYER 0.25, DC 0.25
 PR0120 | LL | 5 | 44 | Pump vendor pours and machines the pump casings | PR0110 | BUYER 0.25
 PR0125 | LL | 5 | 44 | Pump vendor assembles and shop tests pumps P-101A and P-101B | PR0120 | BUYER 0.25, ENGR 0.1
 PR0130 | LL | 5 | 10 | Ship pumps P-101A and P-101B to site | PR0125 | BUYER 0.25
+PR0150 | LL | 5 | 8 | Issue purchase order for variable frequency drives VFD-101A and VFD-101B | EN0330, EN0370 | BUYER 0.5, ENGR 0.25
+PR0155 | LL | 5 | 15 | Review and approve VFD vendor submittals and harmonic study | PR0150 | ENGR 0.5, BUYER 0.25
+PR0160 | LL | 5 | 42 | Vendor builds and factory tests VFDs VFD-101A and VFD-101B | PR0155 | BUYER 0.25
+PR0165 | LL | 5 | 8 | Ship VFD cabinets VFD-101A and VFD-101B to site | PR0160 | BUYER 0.25
 PR0200 | LL | 5 | 6 | Issue purchase order for transformer TX-401 and motor control center MCC-401 | EN0300 SS10 | BUYER 0.5, ENGR 0.25
-PR0210 | LL | 5 | 25 | Review and approve transformer and motor control center vendor drawings | PR0200 | ENGR 0.5, BUYER 0.25
+PR0210 | LL | 5 | 25 | Review and approve transformer and motor control center vendor drawings | PR0200 | ENGR 0.5, BUYER 0.25, DC 0.25
 PR0220 | LL | 5 | 44 | Vendor winds the core and coil of transformer TX-401 | PR0210 | BUYER 0.25
 PR0225 | LL | 5 | 44 | Vendor assembles transformer TX-401 and builds MCC-401 | PR0220 | BUYER 0.25
-PR0227 | LL | 5 | 15 | Vendor factory tests TX-401 and MCC-401 with the owner witnessing | PR0225 | ENGR 0.25
+PR0227 | LL | 5 | 15 | Vendor factory tests TX-401 and MCC-401 with the owner witnessing | PR0225 | ENGR 0.25, QC 0.25
 PR0230 | LL | 5 | 12 | Ship transformer TX-401 and motor control center MCC-401 to site | PR0227 | BUYER 0.25
 PR0300 | LL | 5 | 6 | Issue purchase order for control valve FV-301 and field instruments | EN0310 SS10 | BUYER 0.5, ENGR 0.25
 PR0310 | LL | 5 | 40 | Vendor builds and ships control valve FV-301 and field instruments | PR0300 | BUYER 0.25
 PR0320 | LL | 5 | finish | Owner delivers heat exchanger E-301 to site (owner furnished) | MS0000 |
+PR0350 | LL | 5 | 8 | Issue purchase order for multimedia filtration skid FL-501 and tanks | EN0215 | BUYER 0.5, PROC_E 0.25
+PR0355 | LL | 5 | 15 | Review and approve filtration skid FL-501 vendor drawings | PR0350 | PROC_E 0.5, ENGR 0.25, DC 0.25
+PR0360 | LL | 5 | 42 | Vendor fabricates and hydrotests filtration skid FL-501 and day tanks | PR0355 | BUYER 0.25
+PR0365 | LL | 5 | 10 | Ship filtration skid FL-501 and chemical tanks TK-501/502 to site | PR0360 | BUYER 0.25
+PR0370 | LL | 5 | 6 | Issue purchase order for DCS marshalling cabinet CP-601 and analyzers | EN0335, EN0430 | BUYER 0.5, AUTO 0.25
+PR0375 | LL | 5 | 38 | Vendor integrates, wires and factory tests cabinet CP-601 and analyzers | PR0370 | AUTO 0.25, BUYER 0.25
+PR0380 | LL | 5 | 8 | Ship DCS marshalling cabinet CP-601 and analyzers to site | PR0375 | BUYER 0.25
 PR0400 | BM | 5 | 5 | Issue purchase order for pipe, fittings and valves | EN0220 | BUYER 1
 PR0410 | BM | 5 | 40 | Receive pipe, fittings and valves at the laydown yard | PR0400 | BUYER 0.25
+PR0420 | BM | 5 | 5 | Issue purchase order for Area 500 stainless pipe, chemical tubing and valves | EN0240 | BUYER 0.75
+PR0425 | BM | 5 | 25 | Receive Area 500 stainless pipe, valves and safety shower package | PR0420 | BUYER 0.25
 PR0500 | BM | 5 | 5 | Issue purchase order for pipe rack structural steel | EN0120 | BUYER 1
-PR0505 | BM | 5 | 25 | Steel fabricator prepares pipe rack shop drawings for approval | PR0500 | ENGR 0.25
+PR0505 | BM | 5 | 25 | Steel fabricator prepares pipe rack shop drawings for approval | PR0500 | ENGR 0.25, DC 0.25
 PR0510 | BM | 5 | 40 | Steel fabricator builds pipe rack steel | PR0505 | BUYER 0.25
 PR0515 | BM | 5 | 15 | Steel fabricator galvanizes and ships pipe rack steel | PR0510 | BUYER 0.25
 PR0600 | BM | 5 | 18 | Purchase and receive cable, cable tray and conduit | EN0320 | BUYER 0.5
+PR0605 | BM | 5 | 16 | Purchase and receive fiber optic cable, ductbank conduit and pull boxes | EN0125, EN0325 | BUYER 0.5
 PR0610 | BM | 5 | 35 | Purchase and receive anchor bolts, embeds and reinforcing steel | EN0120 | BUYER 0.5
 PR0620 | BM | 5 | 15 | Purchase and receive instrument tubing, fittings and supports | EN0320 | BUYER 0.25
 PR0630 | BM | 5 | 20 | Purchase and receive insulation, jacketing and heat tracing | EN0220 | BUYER 0.25
+PR0640 | BM | 5 | 12 | Purchase and receive chemical containment epoxy coating system | EN0125 | BUYER 0.25
+PR0700 | SUB | 5 | 10 | Issue bid packages and evaluate mechanical and piping subcontractor bids | EN0080 | BUYER 1, PM 0.5
+PR0710 | SUB | 5 | 6 | Award mechanical and piping installation subcontract | PR0700 | PM 0.5, BUYER 1
+PR0720 | SUB | 5 | 10 | Issue bid packages and evaluate electrical and I&C subcontractor bids | EN0305 | BUYER 1, PM 0.5
+PR0730 | SUB | 5 | 6 | Award electrical and instrumentation subcontract | PR0720 | PM 0.5, BUYER 1
+PR0740 | SUB | 5 | 8 | Award NDT radiography, scaffolding and insulation specialty subcontracts | PM0150, PR0710 | BUYER 0.75, QC 0.25
+PR0750 | SUB | 5 | 6 | Award 250-ton heavy lift crane and rigging subcontract | EN0120 | BUYER 0.5, SUPT 0.25
+PR0760 | SUB | 5 | 6 | Issue PO for commissioning spare parts, seals, gaskets and filter media | PR0130, PR0365 | BUYER 0.75, PE 0.25
+PR0765 | SUB | 5 | 32 | Receive and catalog commissioned spare parts in warehouse | PR0760 | BUYER 0.25, DC 0.25
+PR0800 | EXP | 5 | 3 | Perform mid-fabrication source inspection at pump vendor facility | PR0120 | QC 0.5, BUYER 0.5
+PR0805 | EXP | 5 | 3 | Witness VFD load-bank and harmonic filter factory test | PR0160 | ENGR 0.5, QC 0.5
+PR0810 | EXP | 5 | 3 | Perform source inspection at structural steel fabricator shop | PR0510 | QC 0.5, BUYER 0.5
+PR0815 | EXP | 5 | 3 | Review valve MTRs and hydrotest certificates prior to shipment | PR0410 | QC 0.5, DC 0.5
+PR0820 | EXP | 5 | 3 | Perform source inspection and FAT witness on filtration skid FL-501 | PR0360 | QC 0.5, PROC_E 0.5
+PR0825 | EXP | 5 | 2 | Witness chemical day tank TK-501/502 hydrostatic leak test at vendor | PR0360 | QC 0.5, BUYER 0.25
+PR0830 | EXP | 5 | 3 | Conduct DCS cabinet CP-601 factory acceptance test (FAT) | PR0375, EN0335 | AUTO 1, CXE 0.5, QC 0.5
+PR0835 | EXP | 5 | 2 | Perform receiving megger check on power cable reels and fiber spools | PR0600, PR0605, EL2000 | ELEC 1, QC 0.5
+PR0840 | EXP | 5 | 3 | Bench-verify pressure, flow and temperature transmitters on receipt | PR0310 | INST 1, QC 0.5
+
+# --- Construction: Site Prep & Fabrication ---
 ST0100 | SITE | 6 | 5 | Mobilize site trailers, laydown yard and temporary power | PM0140, PM0130, PM0110 | SUPT 1, GF 1, LAB 4, OPR 1, ELEC 1
+ST0105 | SITE | 6 | 4 | Grade and gravel laydown yard, crane pads and material storage bays | ST0100 | OPR 2, LAB 3, FORK 1
+ST0108 | SITE | 6 | 2 | Hook up temporary construction water, air and trailer sanitary utilities | ST0100 | PF 2, LAB 2
 ST0110 | SITE | 6 | 3 | Install temporary fencing and traffic barricades | ST0100 SS2 | LAB 3
+ST0115 | SITE | 6 | 3 | Install silt fencing, washout pit and stormwater sediment controls | ST0105 | LAB 3, HSE 0.5
 ST0120 | SITE | 6 | 3 | Locate and mark existing underground utilities in the work areas | ST0100 | FE 1, LAB 2, OPR 1, EXC 1
-ST0130 | SITE | 6 | 4 | Survey and stake new foundations and rack column lines | ST0120, EN0130 | FE 2, LAB 1
-ST0140 | SITE | 6 | finish | Construction mobilization complete | ST0110, ST0130 |
-PP0100 | FAB | 6 | 15 | Fabricate pump station piping spools at the fab shop | PR0410, EN0400 | GF 1, PF 3, WLD 2, WMACH 2
+ST0125 | SITE | 6 | 3 | Hydro-excavate pothole verification at critical underground crossings | ST0120 | LAB 3, OPR 1, FE 0.5
+ST0130 | SITE | 6 | 4 | Survey and stake new foundations and rack column lines | ST0120, ST0125, EN0130 | FE 2, LAB 1
+ST0135 | SITE | 6 | 2 | Conduct site safety orientation for mechanical and electrical crews | ST0110, PR0710, PR0730 | HSE 1, SUPT 1
+ST0140 | SITE | 6 | finish | Construction mobilization complete | ST0108, ST0110, ST0115, ST0130, ST0135 |
+PP0100 | FAB | 6 | 15 | Fabricate pump station piping spools at the fab shop | PR0410, EN0400, PR0710 | GF 1, PF 3, WLD 2, WMACH 2
+PP0105 | FAB | 6 | 2 | Perform positive material identification (PMI) on alloy spools and fittings | PR0425, PP0100 | QC 1, LAB 1
 PP0110 | FAB | 6 | 20 | Fabricate pipe rack header spools at the fab shop | PP0100 SS5, EN0410 | PF 3, WLD 2, WMACH 2
-PP0120 | FAB | 6 | 15 | Fabricate heat exchanger and tie-in spools at the fab shop | PP0110, EN0420 | PF 3, WLD 2, WMACH 2
-PP0130 | FAB | 6 | 4 | Radiograph shop spool welds (random 10 percent) | PP0120 | QC 1
+PP0120 | FAB | 6 | 15 | Fabricate heat exchanger and tie-in spools at the fab shop | PP0110, PR0815, EN0420 | PF 3, WLD 2, WMACH 2
+PP0125 | FAB | 6 | 12 | Fabricate Area 500 stainless filtration and chemical feed spools | PP0110, PR0425, PP0105, EN0430 | PF 2, WLD 2, WMACH 2
+PP0128 | FAB | 6 | 3 | Compile shop weld maps, welder qualification logs and NDE packages | PP0120, PR0815 | QC 1, DC 0.5
+PP0130 | FAB | 6 | 4 | Radiograph shop spool welds (random 10 percent) | PP0120, PP0128, PR0740 | QC 1
+PP0135 | FAB | 6 | 3 | Passivate, tag and stage stainless spools for Area 500 delivery | PP0125 | QC 1, LAB 2, FORK 1
+PP0140 | FAB | 6 | 3 | Deliver and stage carbon steel spool bundles to laydown yard | PP0130 | LAB 2, OPR 1, FORK 1
+
+# --- Area 100: Pump Station ---
+WS1000 | A100 | 6 | wbs | Area 100 Pump Station Summary | |
 DM0900 | A100.DEMO | 6 | start | Plant operations releases existing pumps P-1 and P-2 for demolition | ST0140 |
-DM1000 | A100.DEMO | 6 | 2 | Lock out, drain and isolate existing pumps P-1 and P-2 | DM0900, EN0400 | GF 1, PF 2, ELEC 1
+DM1000 | A100.DEMO | 6 | 2 | Lock out, drain and isolate existing pumps P-1 and P-2 | DM0900, EN0400 | GF 1, PF 2, ELEC 1, HSE 0.5
 DM1010 | A100.DEMO | 6 | 3 | Disconnect and remove existing pump motor cables and conduit | DM1000 | ELEC 3
 DM1020 | A100.DEMO | 6 | 4 | Cut out and remove existing pump suction and discharge piping | DM1000 | PF 3, WLD 1, WMACH 1, LIFT 1
 DM1030 | A100.DEMO | 6 | 3 | Rig out existing pumps P-1 and P-2 and their motors | DM1010, DM1020 | MW 2, LAB 2, OPR 1, CR90 1
-DM1040 | A100.DEMO | 6 | 4 | Break out and haul away the old pump bases | DM1030 | LAB 4, OPR 1, EXC 1
-CV1000 | A100.CIVIL | 6 | 4 | Excavate for new pump foundations | DM1040, ST0130 | OPR 1, LAB 3, EXC 1
-CV1010 | A100.CIVIL | 6 | 8 | Form, set anchor bolts and tie reinforcing steel for pump foundations | CV1000, PR0610 | CARP 4, IW 2, LAB 2, REBAR 6
-CV1020 | A100.CIVIL | 6 | 1 | Place concrete for pump foundations | CV1010 | GF 1, LAB 4, CARP 2, OPR 1, CONC 48
+DM1040 | A100.DEMO | 6 | 3 | Break out and haul away the old pump bases | DM1030 | LAB 4, OPR 1, EXC 1, COMP 1
+DM1050 | A100.DEMO | 6 | 1 | Clean, inspect and proof-roll exposed pump station subgrade | DM1040 | LAB 2, FE 0.5, QC 0.5
+CV1000 | A100.CIVIL | 6 | 3 | Excavate for new pump foundations | DM1040, DM1050, ST0130 | OPR 1, LAB 3, EXC 1
+CV1005 | A100.CIVIL | 6 | 1 | Place compacted crushed stone base and 3-inch mud mat | CV1000 | LAB 3, CFIN 2, CONC 10
+CV1010 | A100.CIVIL | 6 | 7 | Form, set anchor bolts and tie reinforcing steel for pump foundations | CV1005, PR0610 | CARP 4, IW 2, LAB 2, REBAR 6
+CV1015 | A100.CIVIL | 6 | 1 | Survey verify anchor bolt templates and pre-pour QA sign-off | CV1010 | FE 1, QC 1
+CV1020 | A100.CIVIL | 6 | 1 | Place concrete for pump foundations | CV1010, CV1015 | GF 1, LAB 4, CARP 2, CFIN 2, OPR 1, CONC 48
 CV1030 | A100.CIVIL | 7 | 7 | Cure concrete at pump foundations | CV1020 | LAB 1
-CV1040 | A100.CIVIL | 6 | 3 | Strip forms and backfill around pump foundations | CV1030 | CARP 2, LAB 3, OPR 1
+CV1040 | A100.CIVIL | 6 | 2 | Strip forms and backfill around pump foundations | CV1030 | CARP 2, LAB 3, OPR 1
+CV1045 | A100.CIVIL | 6 | 1 | Bush-hammer and prepare concrete top surface for pump grouting | CV1040 | LAB 2, CFIN 2, COMP 1
 CV1050 | A100.CIVIL | 6 | 5 | Install pump station access platform, stairs and handrail | EQ1011 | IW 3, LIFT 1
-EQ1000 | A100.EQUIP | 6 | 2 | Receive and inspect pumps P-101A and P-101B | PR0130 | MW 2, OPR 1
-EQ1010 | A100.EQUIP | 6 | 1 | Set pump P-101A on its foundation | EQ1000, CV1040 | MW 3, IW 1, OPR 1, CR90 1
+EQ1000 | A100.EQUIP | 6 | 2 | Receive and inspect pumps P-101A and P-101B | PR0130, PR0800 | MW 2, OPR 1, QC 0.5, FORK 1
+EQ1010 | A100.EQUIP | 6 | 1 | Set pump P-101A on its foundation | EQ1000, CV1040, CV1045 | MW 3, IW 1, OPR 1, CR90 1
 EQ1011 | A100.EQUIP | 6 | 1 | Set pump P-101B on its foundation | EQ1010 | MW 3, IW 1, OPR 1, CR90 1
 EQ1020 | A100.EQUIP | 6 | 2 | Level and rough align pump P-101A | EQ1010 | MW 2
 EQ1021 | A100.EQUIP | 6 | 2 | Level and rough align pump P-101B | EQ1011, EQ1020 | MW 2
-EQ1030 | A100.EQUIP | 6 | 1 | Grout baseplates of pumps P-101A and P-101B | EQ1021 | LAB 2, MW 1, GROUT 40
+EQ1030 | A100.EQUIP | 6 | 1 | Grout baseplates of pumps P-101A and P-101B | EQ1021 | LAB 2, MW 1, CFIN 1, GROUT 40
 EQ1040 | A100.EQUIP | 7 | 3 | Cure baseplate grout at pumps P-101A and P-101B | EQ1030 | LAB 0.5
-EQ1050 | A100.EQUIP | 6 | 2 | Final align pump P-101A to its motor after piping is connected | PP1040 | MW 2
-EQ1051 | A100.EQUIP | 6 | 2 | Final align pump P-101B to its motor after piping is connected | EQ1050 | MW 2
-PP1000 | A100.PIPE | 6 | 8 | Erect suction and discharge piping at pump P-101A | EQ1040, PP0100, DM1020 | PF 4, WLD 2, WMACH 2, LIFT 1
-PP1001 | A100.PIPE | 6 | 8 | Erect suction and discharge piping at pump P-101B | PP1000 SS2 | PF 4, WLD 2, WMACH 2, LIFT 1
+EQ1045 | A100.EQUIP | 6 | 1 | Torque pump anchor bolts and verify soft-foot tolerances | EQ1040 | MW 2, QC 0.5
+EQ1050 | A100.EQUIP | 6 | 2 | Final align pump P-101A to its motor after piping is connected | PP1040 | MW 2, QC 0.5
+EQ1051 | A100.EQUIP | 6 | 2 | Final align pump P-101B to its motor after piping is connected | EQ1050 | MW 2, QC 0.5
+PP1000 | A100.PIPE | 6 | 7 | Erect suction and discharge piping at pump P-101A | EQ1040, EQ1045, PP0100, DM1020 | PF 4, WLD 2, WMACH 2, LIFT 1
+PP1001 | A100.PIPE | 6 | 7 | Erect suction and discharge piping at pump P-101B | PP1000 SS2 | PF 4, WLD 2, WMACH 2, LIFT 1
+PP1005 | A100.PIPE | 6 | 3 | Install check valves, isolation butterfly valves and discharge relief valves | PP1000 | PF 3, FORK 1
 PP1010 | A100.PIPE | 6 | 4 | Install pipe supports and guides at the pump station | PP1000 SS2 | PF 2
-PP1020 | A100.PIPE | 6 | 2 | Radiograph pump station field welds | PP1001 | QC 1
+PP1020 | A100.PIPE | 6 | 2 | Radiograph pump station field welds | PP1001, PP1005 | QC 1
 PP1030 | A100.PIPE | 6 | 2 | Hydrotest pump station piping | PP1020, PP1010, EN0230 | PF 3, QC 1, HYD 1
 PP1040 | A100.PIPE | 6 | 2 | Bolt up suction and discharge flanges to pumps P-101A and P-101B | PP1030 | PF 2, MW 1
 PP1050 | A100.PIPE | 6 | 1 | Install temporary flushing screens in pump suction strainers | PP1040 | PF 2
 EL1000 | A100.ELEC | 6 | 5 | Install conduit and cable supports at the pump station | DM1010, EQ1011, EN0340 | ELEC 3, LIFT 1
-EL1010 | A100.ELEC | 6 | 6 | Pull 480-volt power cables from MCC-401 to pump motors | EL1000, EL4020, PR0600 | ELEC 4, CABLE 1800
-EL1020 | A100.ELEC | 6 | 3 | Terminate and megger pump motor power cables at the motors and MCC-401 | EL1010, EQ1011 | ELEC 2
+EL1005 | A100.ELEC | 6 | 2 | Receive and mount VFD cabinets VFD-101A and VFD-101B in pump house | PR0165, PR0805, CV1050 | ELEC 3, FORK 1
+EL1010 | A100.ELEC | 6 | 6 | Pull 480-volt power cables from MCC-401 to VFDs and pump motors | EL1000, EL1005, EL4020, PR0600, PR0835 | ELEC 4, CABLE 1800
+EL1020 | A100.ELEC | 6 | 3 | Terminate and megger pump motor power cables at the motors, VFDs and MCC-401 | EL1010, EQ1011 | ELEC 2, QC 0.5
 EL1030 | A100.ELEC | 6 | 2 | Install local control stations and motor grounding at pumps P-101A and P-101B | EL1000, EQ1011 | ELEC 2
 EL1040 | A100.ELEC | 6 | 3 | Install pump station lighting and receptacles | CV1050 | ELEC 2, LIFT 1
-IN1000 | A100.INST | 6 | 2 | Install pressure transmitters PT-101A and PT-101B and pressure gauges | PP1001, PR0310 | INST 2
+IN1000 | A100.INST | 6 | 2 | Install pressure transmitters PT-101A and PT-101B and pressure gauges | PP1001, PR0310, PR0840 | INST 2
+IN1005 | A100.INST | 6 | 2 | Install pump bearing vibration and temperature sensors on P-101A/B | EQ1045, PR0310 | INST 2
 IN1010 | A100.INST | 6 | 3 | Run instrument cable from the pump station transmitters to junction box JB-101 | IN1000, EL1000 | INST 2, ELEC 1
-IN1020 | A100.INST | 6 | 2 | Terminate instrument cables at the transmitters and junction box JB-101 | IN1010 | INST 2
+IN1020 | A100.INST | 6 | 2 | Terminate instrument cables at the transmitters and junction box JB-101 | IN1010, IN1005 | INST 2
 PI1000 | A100.PAINT | 6 | 3 | Field paint pump station piping welds and supports | PP1040 | PNT 2, LIFT 1
-CV2000 | A200.CIVIL | 6 | 5 | Excavate for pipe rack spread footings, bents 1 to 6 | ST0130, EN0410, CV3020 | OPR 1, LAB 3, EXC 1
+PI1010 | A100.PAINT | 6 | 2 | Apply pipe flow-direction arrows and equipment tag plaques in Area 100 | PI1000 | PNT 1, LAB 1
+
+# --- Area 200: Pipe Rack ---
+WS2000 | A200 | 6 | wbs | Area 200 Pipe Rack Summary | |
+CV2000 | A200.CIVIL | 6 | 5 | Excavate for pipe rack spread footings, bents 1 to 6 | ST0130, EN0410, CV3040 | OPR 1, LAB 3, EXC 1
 CV2010 | A200.CIVIL | 6 | 10 | Form, set anchor bolts and tie reinforcing steel for rack footings | CV2000, PR0610 | CARP 4, IW 2, LAB 2, REBAR 9
-CV2020 | A200.CIVIL | 6 | 2 | Place concrete for rack footings | CV2010 | GF 1, LAB 4, CARP 2, OPR 1, CONC 72
+CV2015 | A200.CIVIL | 6 | 1 | Inspect rebar cages and verify column anchor bolt elevations | CV2010 | FE 1, QC 1
+CV2020 | A200.CIVIL | 6 | 2 | Place concrete for rack footings | CV2010, CV2015 | GF 1, LAB 4, CARP 2, CFIN 2, OPR 1, CONC 72
 CV2030 | A200.CIVIL | 7 | 7 | Cure concrete at rack footings | CV2020 | LAB 1
 CV2040 | A200.CIVIL | 6 | 4 | Strip forms and backfill rack footings | CV2030 | CARP 2, LAB 3, OPR 1
-CV2100 | A200.CIVIL | 6 | 3 | Receive and shake out pipe rack steel at the laydown yard | PR0515 | IW 2, LAB 2, OPR 1
-CV2110 | A200.CIVIL | 6 | 10 | Erect pipe rack columns and beams, bents 1 to 6 | CV2040, CV2100 | GF 1, IW 5, LAB 1, OPR 1, CR90 1
-CV2120 | A200.CIVIL | 6 | 4 | Plumb, bolt up and torque pipe rack steel | CV2110 | IW 3, LIFT 1
-CV2130 | A200.CIVIL | 6 | 2 | Grout pipe rack column base plates | CV2120 | LAB 2, IW 1, GROUT 30
+CV2045 | A200.CIVIL | 6 | 2 | Compact backfill in lifts and perform nuclear density compaction tests | CV2040 | LAB 2, QC 1
+CV2100 | A200.CIVIL | 6 | 3 | Receive and shake out pipe rack steel at the laydown yard | PR0515, PR0810 | IW 2, LAB 2, OPR 1, FORK 1
+CV2110 | A200.CIVIL | 6 | 10 | Erect pipe rack columns and beams, bents 1 to 6 | CV2040, CV2045, CV2100 | GF 1, IW 5, LAB 1, OPR 1, CR90 1
+CV2120 | A200.CIVIL | 6 | 4 | Plumb, bolt up and torque pipe rack steel | CV2110 | IW 3, LIFT 1, QC 0.5
+CV2130 | A200.CIVIL | 6 | 2 | Grout pipe rack column base plates | CV2120 | LAB 2, IW 1, CFIN 1, GROUT 30
 CV2140 | A200.CIVIL | 6 | 4 | Install pipe rack ladders, platforms and handrail | PP2000 | IW 3, LIFT 1
-ST0200 | A200.CIVIL | 6 | 3 | Erect scaffolding at pipe rack bents 1 to 6 | CV2120 | LAB 4, GF 1
+ST0200 | A200.CIVIL | 6 | 3 | Erect scaffolding at pipe rack bents 1 to 6 | CV2120, PR0740 | LAB 4, GF 1
 PP2000 | A200.PIPE | 6 | 20 | Erect 10-inch process water header on the pipe rack | ST0200, PP0110, CV2130 | GF 1, PF 6, WLD 3, WMACH 3, LIFT 2, CR90 1
+PP2005 | A200.PIPE | 6 | 6 | Erect 4-inch chemical and filtration return branch line on pipe rack | PP2000 SS10, PP0135 | PF 3, WLD 2, WMACH 2, LIFT 1, SSPIPE 420
 PP2010 | A200.PIPE | 6 | 6 | Install pipe shoes, guides and anchors on the pipe rack | PP2000 SS4 | PF 2, IW 1
 PP2020 | A200.PIPE | 6 | 3 | Install high point vents, low point drains and expansion loop | PP2000 | PF 2, WLD 1, WMACH 1
-PP2030 | A200.PIPE | 6 | 3 | Radiograph pipe rack field welds | PP2000, PP2020 | QC 1
+PP2030 | A200.PIPE | 6 | 3 | Radiograph pipe rack field welds | PP2000, PP2005, PP2020 | QC 1
 PP2040 | A200.PIPE | 6 | 3 | Hydrotest pipe rack header | PP2030, PP2010, EN0230 | PF 3, QC 1, HYD 1
+PP2045 | A200.PIPE | 6 | 2 | Drain, dry and reinstate pipe rack test blinds and flange torque tags | PP2040 | PF 2, QC 0.5
 ST0210 | A200.PIPE | 6 | 2 | Dismantle scaffolding at pipe rack bents 1 to 6 | EL2020 | LAB 4
 EL2000 | A200.ELEC | 6 | 10 | Install cable tray on the pipe rack | PP2000 SS5, PR0600 | ELEC 4, LIFT 2
-EL2010 | A200.ELEC | 6 | 5 | Install heat tracing cable on the pipe rack header | PP2040, PR0630 | ELEC 2, LIFT 1
+EL2005 | A200.ELEC | 6 | 4 | Bond and ground pipe rack structural steel and cable tray sections | EL2000 | ELEC 2, LIFT 1
+EL2010 | A200.ELEC | 6 | 5 | Install heat tracing cable on the pipe rack header | PP2045, PR0630 | ELEC 2, LIFT 1
+EL2015 | A200.ELEC | 6 | 2 | Megger heat tracing circuits prior to pipe insulation jacketing | EL2010 | ELEC 1, QC 0.5
 EL2020 | A200.ELEC | 6 | 2 | Terminate heat tracing and test it after insulation | PI2010, EL4070 | ELEC 2
-EL2030 | A200.ELEC | 6 | 4 | Install pipe rack lighting | EL2000, CV2140 | ELEC 2, LIFT 1
-PI2000 | A200.PAINT | 6 | 4 | Field paint pipe rack field welds and touch up damaged primer | PP2040 | PNT 2, LIFT 1
-PI2010 | A200.PAINT | 6 | 10 | Insulate and jacket the pipe rack header for freeze protection | EL2010, PI2000 | INSUL 4, LIFT 2
+EL2030 | A200.ELEC | 6 | 4 | Install pipe rack lighting | EL2000, EL2005, CV2140 | ELEC 2, LIFT 1
+PI2000 | A200.PAINT | 6 | 4 | Field paint pipe rack field welds and touch up damaged primer | PP2045 | PNT 2, LIFT 1
+PI2010 | A200.PAINT | 6 | 10 | Insulate and jacket the pipe rack header for freeze protection | EL2015, PI2000 | INSUL 4, LIFT 2
+PI2020 | A200.PAINT | 6 | 2 | Install weatherproof heat-trace indicator lights and pipe rack ID markers | PI2010 | ELEC 1, LAB 1
+
+# --- Area 300: Heat Exchanger and Header Tie-ins ---
+WS3000 | A300 | 6 | wbs | Area 300 Heat Exchanger and Tie-Ins Summary | |
 DM3000 | A300.DEMO | 6 | 3 | Remove abandoned strainer and piping at the heat exchanger pad area | ST0120, EN0420 | PF 2, LAB 2, WMACH 1
 CV3000 | A300.CIVIL | 6 | 3 | Excavate for the heat exchanger pad | DM3000, ST0130, CV4010 | OPR 1, LAB 2, EXC 1
-CV3010 | A300.CIVIL | 6 | 5 | Form, set anchor bolts and tie reinforcing steel for the heat exchanger pad | CV3000, PR0610 | CARP 3, IW 2, LAB 2, REBAR 4
-CV3020 | A300.CIVIL | 6 | 1 | Place concrete for the heat exchanger pad | CV3010 | GF 1, LAB 4, CARP 2, OPR 1, CONC 36
+CV3005 | A300.CIVIL | 6 | 2 | Place engineered gravel pad and crane matting for heavy lift | CV3000 | OPR 1, LAB 3, FORK 1
+CV3010 | A300.CIVIL | 6 | 5 | Form, set anchor bolts and tie reinforcing steel for the heat exchanger pad | CV3005, PR0610 | CARP 3, IW 2, LAB 2, REBAR 4
+CV3020 | A300.CIVIL | 6 | 1 | Place concrete for the heat exchanger pad | CV3010 | GF 1, LAB 4, CARP 2, CFIN 2, OPR 1, CONC 36
 CV3030 | A300.CIVIL | 7 | 7 | Cure concrete at the heat exchanger pad | CV3020 | LAB 1
 CV3040 | A300.CIVIL | 6 | 2 | Strip forms and backfill the heat exchanger pad | CV3030 | CARP 2, LAB 2, OPR 1
 EQ3000 | A300.EQUIP | 6 | 2 | Receive and inspect owner furnished heat exchanger E-301 | PR0320 | MW 2, OPR 1, QC 0.5
-EQ3010 | A300.EQUIP | 6 | 1 | Set heat exchanger E-301 on its pad with the 250-ton crane | EQ3000, CV3040 | GF 1, IW 3, MW 2, OPR 2, CR250 1
-EQ3020 | A300.EQUIP | 6 | 2 | Level, anchor and grout the heat exchanger E-301 frame | EQ3010 | MW 2, LAB 1, GROUT 12
-PP3000 | A300.PIPE | 6 | 10 | Erect heat exchanger inlet and outlet piping to the pipe rack | EQ3020, PP2000, PP0130 | PF 4, WLD 2, WMACH 2, LIFT 1
+EQ3005 | A300.EQUIP | 6 | 2 | Mobilize, assemble and inspect 250-ton crawler crane for critical lift | EQ3000, CV3040, PR0750 | OPR 2, IW 2, HSE 0.5, CR250 1
+EQ3010 | A300.EQUIP | 6 | 1 | Set heat exchanger E-301 on its pad with the 250-ton crane | EQ3005 | GF 1, IW 3, MW 2, OPR 2, CR250 1
+EQ3015 | A300.EQUIP | 6 | 1 | Disassemble and demobilize 250-ton crawler crane from Area 300 | EQ3010 | OPR 2, IW 2, CR250 1
+EQ3020 | A300.EQUIP | 6 | 2 | Level, anchor and grout the heat exchanger E-301 frame | EQ3010 | MW 2, LAB 1, CFIN 1, GROUT 12
+PP3000 | A300.PIPE | 6 | 10 | Erect heat exchanger inlet and outlet piping to the pipe rack | EQ3020, PP2000, PP0140 | PF 4, WLD 2, WMACH 2, LIFT 1
 PP3010 | A300.PIPE | 6 | 3 | Install control valve FV-301 and its block and bypass valves | PP3000, PR0310 | PF 3
 PP3020 | A300.PIPE | 6 | 3 | Install pipe supports for the heat exchanger piping | PP3000 SS2 | PF 2
 PP3030 | A300.PIPE | 6 | 2 | Radiograph heat exchanger piping field welds | PP3000 | QC 1
 PP3040 | A300.PIPE | 6 | 2 | Hydrotest heat exchanger piping | PP3030, PP3010, PP3020, EN0230 | PF 3, QC 1, HYD 1
-PP3100 | A300.TIE | 7 | start | Plant outage starts: existing cooling water headers drained and isolated by owner | PP3040, PP2040 |
+PP3050 | A300.PIPE | 6 | 2 | Stage pre-beveled tie-in tees, blinds, gaskets and backup welders at Area 300 | PP3040, PM0230 | GF 1, PF 2, FORK 1
+PP3100 | A300.TIE | 7 | start | Plant outage starts: existing cooling water headers drained and isolated by owner | PP3040, PP3050, PP2040 |
 PP3110 | A300.TIE | 7 | 1 | Tie-in TI-01: cut out existing 10-inch supply header spool | PP3100 | GF 1, PF 3, WLD 1, WMACH 1
 PP3120 | A300.TIE | 7 | 2 | Tie-in TI-01: fit up and weld new 10-inch tee on the supply header | PP3110 | PF 3, WLD 2, WMACH 2
 PP3130 | A300.TIE | 7 | 1 | Tie-in TI-01: radiograph new supply header welds | PP3120 | QC 1
@@ -271,7 +565,7 @@ PP3220 | A300.TIE | 7 | 2 | Tie-in TI-02: fit up and weld new 10-inch tee on the
 PP3230 | A300.TIE | 7 | 1 | Tie-in TI-02: radiograph new return header welds | PP3220 | QC 1
 PP3310 | A300.TIE | 7 | 1 | Tie-in TI-03: remove blind flange on existing 4-inch header drain | PP3100 | PF 2
 PP3320 | A300.TIE | 7 | 1 | Tie-in TI-03: bolt up new 4-inch drain connection with new gaskets | PP3310 | PF 2
-PP3400 | A300.TIE | 7 | 1 | Leak test tie-ins TI-01, TI-02 and TI-03 at operating pressure with owner operations | PP3130, PP3230, PP3320 | PF 2, QC 1
+PP3400 | A300.TIE | 7 | 1 | Leak test tie-ins TI-01, TI-02 and TI-03 at operating pressure with owner operations | PP3130, PP3230, PP3320 | PF 2, QC 1, HSE 0.5
 PP3410 | A300.TIE | 7 | finish | Plant outage ends: existing headers returned to service | PP3400 |
 EL3000 | A300.ELEC | 6 | 5 | Install conduit and cable tray for Area 300 instruments | EL2000, EQ3020 | ELEC 3, LIFT 1
 IN3000 | A300.INST | 6 | 3 | Install flow transmitter FT-301 and temperature transmitters TT-301 and TT-302 | PP3040, PR0310 | INST 2
@@ -279,45 +573,115 @@ IN3010 | A300.INST | 6 | 3 | Run instrument air tubing to control valve FV-301 f
 IN3020 | A300.INST | 6 | 2 | Install pressure gauges at the heat exchanger inlet and outlet | PP3040 | INST 1
 IN3030 | A300.INST | 6 | 4 | Pull instrument cables from Area 300 instruments to junction box JB-301 | IN3000, EL3000 | INST 2, ELEC 1
 IN3040 | A300.INST | 6 | 2 | Terminate instrument cables at the instruments and junction box JB-301 | IN3030 | INST 2
-IN3050 | A300.INST | 6 | 4 | Pull home-run cables from JB-101 and JB-301 to the control room marshalling cabinet | IN1020, IN3040 | ELEC 2, INST 1
-IN3060 | A300.INST | 6 | 2 | Terminate home-run cables at the control room marshalling cabinet | IN3050 | INST 2
+IN3050 | A300.INST | 6 | 4 | Pull home-run cables from JB-101 and JB-301 to the control room marshalling cabinet | IN1020, IN3040, EL6020 | ELEC 2, INST 1
+IN3060 | A300.INST | 6 | 2 | Terminate home-run cables at the control room marshalling cabinet | IN3050, DC6010 | INST 2
 PI3000 | A300.PAINT | 6 | 3 | Field paint heat exchanger piping welds and supports | PP3040 | PNT 2
 PI3010 | A300.PAINT | 6 | 2 | Field paint tie-in welds at TI-01 and TI-02 | PP3410 | PNT 2
+
+# --- Area 400: Electrical Room ---
 CV4000 | A400.CIVIL | 6 | 3 | Form and tie reinforcing steel for the transformer pad and oil containment curb | ST0130, PR0610 | CARP 3, IW 1, LAB 2, REBAR 2
-CV4010 | A400.CIVIL | 6 | 1 | Place concrete for the transformer pad and oil containment curb | CV4000, EL4000 | LAB 3, CARP 2, CONC 18
+CV4010 | A400.CIVIL | 6 | 1 | Place concrete for the transformer pad and oil containment curb | CV4000, EL4000 | LAB 3, CARP 2, CFIN 1, CONC 18
 CV4020 | A400.CIVIL | 7 | 7 | Cure concrete at the transformer pad | CV4010 | LAB 0.5
 CV4030 | A400.CIVIL | 6 | 2 | Install transformer bollards and gravel surfacing | CV4020 | LAB 2, OPR 1
 EL4000 | A400.ELEC | 6 | 3 | Install ground grid and ground rods at the transformer pad | ST0130 | ELEC 2, LAB 1
-EL4010 | A400.ELEC | 6 | 2 | Set transformer TX-401 on its pad | PR0230, CV4020 | ELEC 2, IW 1, OPR 1, CR90 1
-EL4020 | A400.ELEC | 6 | 2 | Set motor control center MCC-401 in the electrical room | PR0230 | ELEC 3, OPR 1
-EL4030 | A400.ELEC | 6 | 6 | Pull and terminate the 4160-volt feeder from existing switchgear to TX-401 | EL4010, PR0600, EN0330 | ELEC 4
+EL4005 | A400.ELEC | 6 | 2 | Perform ground grid continuity and soil resistivity fall-of-potential test | EL4000 | ELEC 1, QC 0.5
+EL4010 | A400.ELEC | 6 | 2 | Set transformer TX-401 on its pad | PR0230, CV4020, EL4005 | ELEC 2, IW 1, OPR 1, CR90 1
+EL4020 | A400.ELEC | 6 | 2 | Set motor control center MCC-401 in the electrical room | PR0230 | ELEC 3, OPR 1, FORK 1
+EL4030 | A400.ELEC | 6 | 6 | Pull and terminate the 4160-volt feeder from existing switchgear to TX-401 | EL4010, PR0600, PR0835, EN0330 | ELEC 4
 EL4040 | A400.ELEC | 6 | 3 | Install and terminate the 480-volt feeder from TX-401 to MCC-401 | EL4010, EL4020 | ELEC 3
-EL4050 | A400.ELEC | 6 | 2 | Test transformer TX-401: insulation resistance, turns ratio and oil sample | EL4030, EL4040 | ELEC 2
-EL4060 | A400.ELEC | 6 | 2 | Megger and test motor control center MCC-401 starters and breakers | EL4040 | ELEC 2
-EL4070 | A400.ELEC | 6 | 1 | Energize transformer TX-401 and MCC-401 with owner switching | EL4050, EL4060 | ELEC 2, SUPT 1
+EL4050 | A400.ELEC | 6 | 2 | Test transformer TX-401: insulation resistance, turns ratio and oil sample | EL4030, EL4040 | ELEC 2, QC 0.5
+EL4055 | A400.ELEC | 6 | 2 | Calibrate protective relays and verify 4160V breaker trip curves | EL4030 | ELEC 2, QC 0.5
+EL4060 | A400.ELEC | 6 | 2 | Megger and test motor control center MCC-401 starters and breakers | EL4040 | ELEC 2, QC 0.5
+EL4065 | A400.ELEC | 6 | 1 | Perform pre-energization safety inspection and owner readiness walkdown | EL4050, EL4055, EL4060 | ELEC 1, SUPT 1, HSE 0.5, QC 0.5
+EL4070 | A400.ELEC | 6 | 1 | Energize transformer TX-401 and MCC-401 with owner switching | EL4065 | ELEC 2, SUPT 1, HSE 0.5
 EL4080 | A400.ELEC | 6 | 3 | Install electrical room lighting and receptacles | EL4020 | ELEC 2
-EL4090 | A400.ELEC | 6 | 1 | Install arc flash and equipment labels at TX-401 and MCC-401 | EL4070 | ELEC 1
-CM9000 | MC | 6 | 2 | Walk down Area 100 pump station for mechanical completion | PP1050, EL1020, EL1030, EL1040, IN1020, PI1000, EQ1051, CV1050 | GF 1, FE 1, QC 1
-CM9010 | MC | 6 | 2 | Walk down Area 200 pipe rack for mechanical completion | ST0210, EL2020, EL2030, CV2140 | GF 1, FE 1, QC 1
+EL4085 | A400.ELEC | 6 | 2 | Install electrical room HVAC exhaust louver, smoke detector and fire extinguishers | EL4080 | ELEC 1, LAB 1, HSE 0.5
+EL4090 | A400.ELEC | 6 | 1 | Install arc flash and equipment labels at TX-401 and MCC-401 | EL4070, EL4085 | ELEC 1
+
+# --- Area 500: Chemical Feed and Filtration Skid ---
+WS5000 | A500 | 6 | wbs | Area 500 Chemical Feed and Filtration Skid Summary | |
+CV5000 | A500.CIVIL | 6 | 4 | Excavate and grade for Area 500 filtration and chemical containment pad | CV2045, PM0135, EN0430 | OPR 1, LAB 3, EXC 1
+CV5010 | A500.CIVIL | 6 | 3 | Install containment sump pit, under-slab drain piping and vapor barrier | CV5000 | PF 2, LAB 2, CARP 2
+CV5020 | A500.CIVIL | 6 | 7 | Form, tie rebar and set anchor embeds for Area 500 containment slab | CV5010, PR0610 | CARP 4, IW 2, LAB 2, REBAR 5
+CV5030 | A500.CIVIL | 6 | 1 | Place concrete for Area 500 filtration pad and chemical containment curb | CV5020 | GF 1, LAB 4, CARP 2, CFIN 2, OPR 1, CONC 42
+CV5040 | A500.CIVIL | 7 | 7 | Cure concrete at Area 500 containment slab | CV5030 | LAB 1
+CV5050 | A500.CIVIL | 6 | 3 | Strip forms, backfill perimeter and install pipe trench grating | CV5040 | CARP 2, LAB 2, IW 1
+CV5060 | A500.CIVIL | 6 | 4 | Abrasive blast slab and apply chemical-resistant epoxy containment coating | CV5050, PR0640 | PNT 3, LAB 1, QC 0.5, EPOXY 1250
+CV5065 | A500.CIVIL | 6 | 2 | Perform holiday spark test and 24-hour hydrostatic flood test on containment curb | CV5060 | QC 1, LAB 2
+EQ5000 | A500.EQUIP | 6 | 2 | Receive and inspect filtration skid FL-501 and chemical tanks TK-501/502 | PR0365, PR0820, PR0825 | MW 2, OPR 1, QC 0.5, FORK 1
+EQ5010 | A500.EQUIP | 6 | 2 | Rig and set multimedia filtration skid FL-501 onto Area 500 pad | EQ5000, CV5065 | GF 1, MW 3, IW 2, OPR 1, CR90 1
+EQ5020 | A500.EQUIP | 6 | 2 | Set chemical day tanks TK-501 and TK-502 and metering pump skid | EQ5010 | MW 2, IW 1, OPR 1, CR90 1
+EQ5030 | A500.EQUIP | 6 | 2 | Level, anchor and grout filtration skid FL-501 and load filter media | EQ5010 | MW 2, LAB 2, GROUT 20
+EQ5040 | A500.EQUIP | 6 | 3 | Install Area 500 chemical containment canopy steel and maintenance platform | EQ5020 | IW 3, LIFT 1
+PP5000 | A500.PIPE | 6 | 8 | Erect 4-inch stainless steel inlet, backwash and filtrate piping at Area 500 | EQ5030, PP0135 | PF 3, WLD 2, WMACH 2, SSPIPE 260
+PP5010 | A500.PIPE | 6 | 5 | Install dual-wall chemical dosing lines from TK-501/502 to injection quills | EQ5020, PR0425 | PF 3
+PP5020 | A500.PIPE | 6 | 3 | Install emergency safety shower, eyewash station and tempered water valve | CV5060, PR0425, UT6020 | PF 2
+PP5030 | A500.PIPE | 6 | 2 | Radiograph and borescope inspect Area 500 stainless process welds | PP5000 | QC 1
+PP5040 | A500.PIPE | 6 | 2 | Hydrotest Area 500 filtration and chemical feed piping | PP5030, PP5010, PP5020, EN0230 | PF 3, QC 1, HYD 1
+EL5000 | A500.ELEC | 6 | 4 | Install conduit, cable tray and local disconnect switches at Area 500 | EQ5040, EN0340, PR0600 | ELEC 3, LIFT 1
+EL5010 | A500.ELEC | 6 | 4 | Pull and terminate 480-volt feeders from MCC-401 to FL-501 and dosing pumps | EL5000, EL4020 | ELEC 3, CABLE 950
+EL5020 | A500.ELEC | 6 | 3 | Install freeze-protection heat tracing on Area 500 backwash and shower lines | PP5040, PR0630 | ELEC 2
+EL5030 | A500.ELEC | 6 | 2 | Install Area 500 canopy LED lighting, grounding and GFCI receptacles | EL5010 | ELEC 2, LIFT 1
+IN5000 | A500.INST | 6 | 3 | Install pH, conductivity and turbidity analyzer rack AN-501 and sample lines | PP5040, PR0380 | INST 2, PF 1
+IN5010 | A500.INST | 6 | 3 | Install ultrasonic tank level transmitters LT-501/502 and differential pressure gauges | EQ5020, PR0380 | INST 2
+IN5020 | A500.INST | 6 | 4 | Pull and terminate Area 500 instrument cables to junction box JB-501 | IN5000, IN5010, EL5000 | INST 2, ELEC 1
+PI5000 | A500.PAINT | 6 | 3 | Field paint Area 500 carbon steel supports, canopy touch-ups and pipe labels | PP5040, EQ5040 | PNT 2, LIFT 1
+PI5010 | A500.PAINT | 6 | 4 | Insulate and jacket Area 500 heat-traced piping and safety shower line | EL5020, PI5000 | INSUL 3
+
+# --- Area 600: Control Room, DCS and Plant Utilities ---
+CV6000 | A600.CIVIL | 6 | 4 | Sawcut paving and trench underground electrical and fiber ductbank | CV5050, EN0430 | OPR 1, LAB 3, EXC 1
+CV6010 | A600.CIVIL | 6 | 5 | Install PVC ductbank conduits, spacers, pull boxes and warning tape | CV6000, PR0605 | ELEC 3, LAB 2
+CV6020 | A600.CIVIL | 6 | 2 | Place red-dyed concrete encasement over underground ductbank | CV6010 | LAB 3, CFIN 1, CONC 24
+CV6030 | A600.CIVIL | 6 | 3 | Backfill ductbank trenches and compact subgrade to 95 percent Proctor | CV6020 | OPR 1, LAB 3, QC 0.5
+EL6020 | A600.DCS | 6 | 5 | Pull 12-strand fiber optic backbone and control cables through ductbank | CV6030, PR0605, PR0835 | ELEC 3, INST 1, FIBER 1600
+EL6025 | A600.DCS | 6 | 2 | Fusion-splice fiber patch panels and run OTDR loss certification test | EL6020 | INST 2, QC 0.5
+DC6000 | A600.DCS | 6 | 2 | Receive, unpack and set DCS marshalling cabinet CP-601 in control room | PR0380, PR0830, CV6020 | INST 2, ELEC 1, FORK 1
+DC6005 | A600.DCS | 6 | 2 | Install and load-test redundant 24VDC UPS power supply for cabinet CP-601 | DC6000 | ELEC 2, INST 1
+DC6010 | A600.DCS | 6 | 4 | Terminate fiber patch panels, power feeds and JB-501 home-runs in CP-601 | DC6005, EL6025, IN5020 | INST 2, AUTO 1
+DC6020 | A600.DCS | 6 | 4 | Download DCS application software and configure HMI operator screens | DC6010, EN0335 | AUTO 2
+DC6030 | A600.DCS | 6 | 3 | Execute control room network redundancy and fiber failover test | DC6020 | AUTO 1, INST 1, QC 0.5
+UT6000 | A600.UTIL | 6 | 4 | Extend 2-inch plant instrument air branch header to Area 300 and Area 500 | EQ5040, PR0620 | PF 3, LIFT 1
+UT6010 | A600.UTIL | 6 | 2 | Pressure test and blow down new instrument air branch header | UT6000 | PF 2, QC 0.5, COMP 1
+UT6020 | A600.UTIL | 6 | 3 | Install potable water branch supply for Area 500 safety shower and eyewash | CV5050, EN0430 | PF 2, LAB 1
+UT6030 | A600.UTIL | 6 | 4 | Install gravity backwash and process drain tie-in to plant neutralization sump | CV6030, EN0430 | PF 2, OPR 1, LAB 2, EXC 1
+CV6040 | A600.CIVIL | 6 | 4 | Restore plant roadway asphalt, curbs and concrete sidewalks | CV6030, UT6030, EQ3015 | OPR 2, LAB 4, CFIN 2
+
+# --- Pre-Commissioning, Mechanical Completion, Startup & Turnover ---
+PC9000 | PRECOM | 6 | 3 | Conduct pipe cleanliness verification and air-blow of Area 500 lines | PP5040, UT6010 | PF 2, CXE 1, COMP 1
+PC9010 | PRECOM | 6 | 3 | Perform chemical passivation and rinse of Area 500 stainless headers | PC9000 | PF 2, CXE 1, HSE 0.5
+PC9020 | PRECOM | 6 | 2 | Parameterize and bench-test VFDs VFD-101A and VFD-101B | EL1020, EL4070 | ELEC 2, AUTO 1, CXE 0.5
+PC9030 | PRECOM | 6 | 3 | Verify Area 500 analyzer wet calibration and chemical metering pump stroke | IN5020, EL5010, EL4070 | INST 2, CXE 1
+CM9000 | MC | 6 | 2 | Walk down Area 100 pump station for mechanical completion | PP1050, EL1020, EL1030, EL1040, IN1020, PI1010, EQ1051, CV1050, PC9020 | GF 1, FE 1, QC 1
+CM9010 | MC | 6 | 2 | Walk down Area 200 pipe rack for mechanical completion | ST0210, EL2020, EL2030, CV2140, PI2020 | GF 1, FE 1, QC 1
 CM9020 | MC | 6 | 2 | Walk down Area 300 heat exchanger and tie-ins for mechanical completion | PI3000, PI3010, IN3040, IN3020, IN3010 | GF 1, FE 1, QC 1
 CM9030 | MC | 6 | 1 | Walk down Area 400 electrical room for mechanical completion | EL4090, EL4080, CV4030 | GF 1, FE 1, QC 1
-CM9040 | MC | 6 | 6 | Clear punch list items from the mechanical completion walkdowns | CM9000, CM9010, CM9020, CM9030 | GF 1, PF 2, ELEC 2, LAB 2
+CM9032 | MC | 6 | 2 | Walk down Area 500 filtration skid and chemical feed for mechanical completion | PI5010, EL5030, PC9010, PC9030 | GF 1, FE 1, QC 1
+CM9035 | MC | 6 | 1 | Walk down Area 600 DCS cabinet, utilities and paving for mechanical completion | DC6030, CV6040, UT6010 | FE 1, QC 1, AUTO 1
+CM9040 | MC | 6 | 6 | Clear punch list items from the mechanical completion walkdowns | CM9000, CM9010, CM9020, CM9030, CM9032, CM9035 | GF 1, PF 2, ELEC 2, LAB 2, INST 1
 CM9050 | MC | 6 | finish | Mechanical completion: contract milestone | CM9040, IN3060 |
 CM9100 | SU | 6 | 3 | Flush new process water piping to clean water | CM9050 | PF 3, LAB 2, CXE 0.5
 CM9110 | SU | 6 | 1 | Remove temporary flushing screens and reinstate piping | CM9100 | PF 2
 CM9120 | SU | 6 | 4 | Calibrate transmitters and stroke control valve FV-301 | IN1020, IN3040, IN3010 | INST 2
-CM9130 | SU | 6 | 4 | Loop check instruments from the field to the control room | CM9120, IN3060, EL4070 | INST 2, CXE 1
-CM9140 | SU | 6 | 2 | Bump motors and check rotation of pumps P-101A and P-101B | EL4070, EL1020, EQ1051 | ELEC 2, MW 1, CXE 1
-CM9150 | SU | 6 | 3 | Run pumps P-101A and P-101B on water and check vibration | CM9140, CM9110 | MW 2, PF 1, CXE 1
-CM9160 | SU | 6 | 3 | Performance test heat exchanger E-301 with owner operations | CM9150, CM9130 | CXE 1, INST 1
-CM9170 | SU | 6 | 2 | Train owner operators on the new pumps, heat exchanger and controls | CM9160 SS1 | CXE 1, SUPT 0.5
+CM9130 | SU | 6 | 4 | Loop check instruments from the field to the control room | CM9120, IN3060, EL4070, DC6020 | INST 2, CXE 1, AUTO 1
+CM9135 | SU | 6 | 3 | Execute DCS site acceptance test (SAT) and safety interlock trip checks | CM9130, PC9020, PC9030 | AUTO 1.5, CXE 1, INST 1
+CM9140 | SU | 6 | 2 | Bump motors and check rotation of pumps P-101A and P-101B | EL4070, EL1020, EQ1051, PC9020 | ELEC 2, MW 1, CXE 1
+CM9142 | SU | 6 | 1 | Perform uncoupled 4-hour motor solo run and baseline vibration check | CM9140 | MW 2, ELEC 1, CXE 0.5
+CM9145 | SU | 6 | 2 | Wet-commission filtration skid FL-501 and verify backwash sequence | CM9110, CM9135 | CXE 1, PF 2, AUTO 1
+CM9150 | SU | 6 | 3 | Run pumps P-101A and P-101B on water and check vibration | CM9142, CM9110 | MW 2, PF 1, CXE 1
+CM9155 | SU | 6 | 2 | Tune control valve FV-301 PID loop and pump VFD pressure setpoint control | CM9150, CM9135 | AUTO 1, INST 1, CXE 1
+CM9160 | SU | 6 | 3 | Performance test heat exchanger E-301 and integrated loop with owner operations | CM9155, CM9145, CM9130 | CXE 1, INST 1, PROC_E 0.5
+CM9170 | SU | 6 | 2 | Train owner operators on the new pumps, filtration skid, heat exchanger and DCS | CM9160 SS1 | CXE 1, SUPT 0.5, AUTO 0.5
 CM9180 | SU | 6 | finish | Startup complete: system in operation | CM9160, CM9170 |
-CM9190 | SU | 7 | 30 | Run the new system through the 30-day reliability period with owner operations | CM9180 | CXE 0.2
-CM9200 | TO | 6 | 5 | Assemble turnover packages: test records, radiograph reports and loop sheets | CM9050 | QC 1, FE 1
-CM9210 | TO | 6 | 5 | Submit operating and maintenance manuals and spare parts lists | CM9050 | PE 1
-CM9220 | TO | 6 | 2 | Owner acceptance walkdown and signed turnover certificates | CM9200, CM9190, CM9210 | PM 1, SUPT 1, QC 1
+CM9190 | SU | 7 | 30 | Run the new system through the 30-day reliability period with owner operations | CM9180 | CXE 0.2, AUTO 0.1
+CM9200 | TO | 6 | 5 | Assemble turnover packages: test records, radiograph reports and loop sheets | CM9050 | QC 1, FE 1, DC 1
+CM9205 | TO | 6 | 3 | Deliver commissioned spare parts inventory and special maintenance tools | CM9050, PR0765 | BUYER 0.5, PE 0.5, LAB 1
+CM9210 | TO | 6 | 5 | Submit operating and maintenance manuals and spare parts lists | CM9050 | PE 1, DC 0.5
+CM9215 | TO | 6 | 3 | Complete field redline verification walkdown for as-built drawings | CM9180 | FE 1, ENGR 0.5, DC 0.5
+CM9220 | TO | 6 | 2 | Owner acceptance walkdown and signed turnover certificates | CM9200, CM9205, CM9190, CM9210, CM9215 | PM 1, SUPT 1, QC 1, CXE 0.5
 PM0900 | PM | 6 | 5 | Demobilize site trailers, equipment and temporary power | CM9180 | SUPT 0.5, LAB 4, OPR 1, ELEC 1
-PM0910 | PM | 6 | 8 | Submit as-built drawings and closeout documents | CM9220 | PE 1, ENGR 0.5
+PM0902 | PM.QA | 6 | 2 | Conduct project closeout lessons-learned review with owner and trade leads | CM9220 | PM 1, SUPT 0.5, PE 0.5, SCHED 0.5
+PM0905 | PM.CTRL | 6 | 4 | Reconcile final subcontractor change orders and closeout lien waivers | CM9220 FF2 | PM 0.5, BUYER 1, SCHED 0.5
+PM0910 | PM | 6 | 8 | Submit as-built drawings and closeout documents | CM9220, PM0902, PM0905 | PE 1, ENGR 0.5, DC 1
 PM0920 | PM | 6 | finish | Project complete | PM0900, PM0910 |
 
 # Constraints: "plan" puts the date where the unconstrained plan finishes.
@@ -326,12 +690,16 @@ PR0320 | finish on or after | 2027-01-08 15:30
 DM0900 | start on or after | 2026-11-23 06:00
 PP3100 | start on or after | 2027-02-13 06:00
 CM9050 | finish on or before | plan
+PM0118 | finish on or before | 2026-07-10 15:30
+PR0365 | finish on or before | 2026-12-18 15:30
 
 ## codes
 Area | 100 | Area 100 Pump Station
 Area | 200 | Area 200 Pipe Rack
 Area | 300 | Area 300 Heat Exchanger and Tie-ins
 Area | 400 | Area 400 Electrical Room
+Area | 500 | Area 500 Chemical Feed and Filtration Skid
+Area | 600 | Area 600 Control Room, DCS and Utilities
 Area | GEN | General, all areas
 Discipline | PM | Project Management
 Discipline | ENG | Engineering
@@ -342,6 +710,7 @@ Discipline | EQP | Equipment
 Discipline | PIP | Piping
 Discipline | ELE | Electrical
 Discipline | INS | Instrumentation
+Discipline | AUT | Automation and DCS
 Discipline | PNT | Paint and Insulation
 Discipline | COM | Commissioning
 Phase | 1-ENG | Engineering
@@ -351,39 +720,64 @@ Phase | 4-COMM | Commissioning and Turnover
 Responsibility | GC | General Contractor
 Responsibility | MECH | Mechanical Subcontractor
 Responsibility | ELEC | Electrical Subcontractor
+Responsibility | AUTO | Automation Integrator
 Responsibility | VEND | Vendor
 Responsibility | OWN | Owner
 
-# label | data type
+# table (TASK or PROJECT) | label | data type (text, number, cost, start_date, finish_date)
 ## udfs
-Work Package | text
-Drawing Number | text
-Permit Required | text
-Crew Size | number
+TASK | Work Package | text
+TASK | Drawing Number | text
+TASK | Permit Required | text
+TASK | Crew Size | number
+TASK | Subcontract Value | cost
+TASK | Target Submittal Date | finish_date
+PROJECT | Contract Number | text
+PROJECT | Plant Manager | text
 
-# activity | label | value
+# target (PROJECT or activity ID) | label | value
 ## udf values
+PROJECT | Contract Number | RB-EPC-2026-014
+PROJECT | Plant Manager | K. Hendrickson
 DM1000 | Permit Required | Hot work and lockout permit
 DM1020 | Permit Required | Hot work permit
 DM1040 | Permit Required | Excavation permit
 CV1000 | Permit Required | Excavation permit
 CV2000 | Permit Required | Excavation permit
 CV3000 | Permit Required | Excavation permit
+CV5000 | Permit Required | Excavation permit
+CV6000 | Permit Required | Excavation and road crossing permit
 PP3110 | Permit Required | Hot work and line break permit
 PP3210 | Permit Required | Hot work and line break permit
 PP3310 | Permit Required | Line break permit
 EL4070 | Permit Required | Energized work permit
+PC9010 | Permit Required | Chemical handling permit
 CV1010 | Drawing Number | RB-S-101
 CV2010 | Drawing Number | RB-S-201
 CV3010 | Drawing Number | RB-S-301
+CV5020 | Drawing Number | RB-S-501
+CV6010 | Drawing Number | RB-E-601
 PP1000 | Drawing Number | RB-P-110
 PP1001 | Drawing Number | RB-P-111
 PP2000 | Drawing Number | RB-P-201
+PP2005 | Drawing Number | RB-P-205
 PP3000 | Drawing Number | RB-P-301
 PP3120 | Drawing Number | RB-P-351
 PP3220 | Drawing Number | RB-P-352
+PP5000 | Drawing Number | RB-P-501
 EL1010 | Drawing Number | RB-E-110
 EL4030 | Drawing Number | RB-E-401
+EL5010 | Drawing Number | RB-E-501
+DC6010 | Drawing Number | RB-I-601
+PR0110 | Target Submittal Date | 2026-07-17 15:30
+PR0210 | Target Submittal Date | 2026-08-07 15:30
+PR0355 | Target Submittal Date | 2026-08-21 15:30
+PR0505 | Target Submittal Date | 2026-09-11 15:30
+PP0100 | Subcontract Value | 142000
+PP2000 | Subcontract Value | 265000
+EL4030 | Subcontract Value | 98500
+EQ5010 | Subcontract Value | 185000
+DC6020 | Subcontract Value | 76000
 
 # activity | step | weight
 ## steps
@@ -402,65 +796,223 @@ CV2110 | Set beams and struts | 50
 PP3040 | Fill and vent the piping | 20
 PP3040 | Hold test pressure and inspect joints | 60
 PP3040 | Drain and record the test | 20
+EN0060 | Draft process flow diagrams | 25
+EN0060 | Issue 60 percent P&IDs for squad check | 35
+EN0060 | Incorporate operations markup | 25
+EN0060 | Release P&IDs for HAZOP | 15
+CV5060 | Perform moisture vapor emission test | 20
+CV5060 | Abrasive blast slab to CSP-3 profile | 30
+CV5060 | Apply epoxy primer and base coat | 30
+CV5060 | Apply chemical-resistant topcoat and spark test | 20
+EQ5010 | Verify crane pick radius and pad clearances | 20
+EQ5010 | Lift filtration skid FL-501 onto pad | 45
+EQ5010 | Align skid anchor slots and shim level | 35
+PP3120 | Verify lockout, drain and cold-cut bevel | 20
+PP3120 | Fit up 10-inch tee with owner QA witness | 35
+PP3120 | Complete root, hot pass and cap welds | 45
+EL4070 | Verify switching order and grounding removal | 25
+EL4070 | Close primary 4160V breaker to TX-401 | 35
+EL4070 | Verify secondary phase rotation and voltage | 20
+EL4070 | Energize MCC-401 main bus | 20
+DC6010 | Mount fiber patch panels and fusion splice pigtails | 35
+DC6010 | Land field multi-pair home-runs on marshalling blocks | 45
+DC6010 | Run OTDR fiber attenuation test and label cables | 20
+CM9135 | Verify analog scaling for PT, FT, TT and analyzer points | 35
+CM9135 | Test pump lead-lag auto-failover logic | 35
+CM9135 | Test high-pressure and low-suction safety trips | 30
 
 # activity | category | account | name | vendor | cost
 ## expenses
+PM0100 | Insurance and Bonds | 6000 | Builders risk insurance and performance bond | Midwest Surety Underwriters | 48500
 PM0130 | Permits and Fees | 6000 | County building and excavation permits | County Building Department | 18500
+PM0135 | Permits and Fees | 6000 | State industrial water filtration permit fee | State Environmental Agency | 9200
+EN0110 | Testing and Inspection | 5000 | Geotechnical soil borings and lab report | Heartland GeoTesting | 11400
 PR0130 | Freight | 6000 | Freight for pumps P-101A and P-101B | Valley Freight Lines | 6800
+PR0165 | Freight | 6000 | Climate-controlled freight for VFDs VFD-101A/B | Valley Freight Lines | 4100
 PR0230 | Freight | 6000 | Heavy haul for transformer TX-401 and MCC-401 | Valley Freight Lines | 14200
-EQ3010 | Vendor Services | 5000 | 250-ton crane mobilization and demobilization | Northgate Crane Rental | 12000
+PR0365 | Freight | 6000 | Oversize flatbed freight for filtration skid FL-501 | Valley Freight Lines | 9800
+PR0830 | Vendor Services | 5000 | DCS FAT test bench rental and witness travel | Northstar Controls Inc. | 6400
+ST0125 | Subcontract Services | 5000 | Vacuum hydro-excavation truck and utility locating | ClearLine Vac Services | 8600
+CV2045 | Testing and Inspection | 5000 | Soil compaction and concrete cylinder lab testing | Heartland GeoTesting | 7500
+CV5060 | Subcontract Services | 5000 | Chemical containment epoxy lining applicator fee | Apex Industrial Coatings | 16800
+EQ3005 | Vendor Services | 5000 | 250-ton crane mobilization, mats and demobilization | Northgate Crane Rental | 28500
 PP0130 | Testing and Inspection | 5000 | Radiography of shop spool welds | Summit Inspection Services | 4200
 PP1020 | Testing and Inspection | 5000 | Radiography of pump station field welds | Summit Inspection Services | 3100
 PP2030 | Testing and Inspection | 5000 | Radiography of pipe rack field welds | Summit Inspection Services | 4600
 PP3030 | Testing and Inspection | 5000 | Radiography of heat exchanger piping welds | Summit Inspection Services | 2900
 PP3130 | Testing and Inspection | 5000 | Radiography of tie-in TI-01 welds (outage call-out) | Summit Inspection Services | 2400
 PP3230 | Testing and Inspection | 5000 | Radiography of tie-in TI-02 welds (outage call-out) | Summit Inspection Services | 2400
-EL4050 | Testing and Inspection | 5000 | Transformer oil sample and electrical testing | Keystone Electrical Testing | 4800
+PP5030 | Testing and Inspection | 5000 | Radiography and borescope QA of stainless welds | Summit Inspection Services | 3800
+EL4050 | Testing and Inspection | 5000 | Transformer oil sample and NETA electrical testing | Keystone Electrical Testing | 8200
+PC9010 | Subcontract Services | 5000 | Citric acid passivation chemicals and waste disposal | AquaClean Industrial | 11200
+CM9145 | Vendor Services | 5000 | Filtration skid vendor commissioning technician | ClearStream Process Systems | 8400
 CM9150 | Vendor Services | 5000 | Pump vendor startup technician, 3 days | Pump vendor field service | 7200
+CV6040 | Subcontract Services | 5000 | Hot-mix asphalt paving and striping subcontract | River Valley Paving | 22400
 
 # activity | resource | curve
 ## curves
+EN0100 | ENGR | Early Weighted
+EN0200 | ENGR | Early Weighted
+EN0300 | ENGR | Bell, Early Peak
 PR0120 | BUYER | Bell, Centered
 PR0220 | BUYER | Bell, Centered
+PR0360 | BUYER | Bell, Late Peak
+PP0110 | PF | Steady with Ramps
 PP2000 | PF | Steady with Ramps
-EN0200 | ENGR | Early Weighted
+PP2000 | WLD | Bell, Centered
+PP3000 | PF | Steady with Ramps
+PP5000 | PF | Bell, Early Peak
+PI2010 | INSUL | Ramp Up
 CM9040 | PF | Ramp Down
+CM9040 | ELEC | Ramp Down
+
+## doc categories
+Engineering Drawing
+Specification
+Vendor Submittal
+Permit and Regulatory
+Quality and Test Plan
+Safety Plan
+Contract and Change Order
+
+## doc statuses
+Draft
+In Review
+Approved
+Issued for Construction
+Superseded
+
+# id | parent | ref | title | category | status | version | author | date | deliv | targets (WBS or Activity IDs) | description
+## documents
+DOC01 | | RB-PKG-01 | 01 - Project Execution, Safety and Permits | Contract and Change Order | Approved | Rev 1 | M. Alvarez | 2026-06-15 15:30 | N | PM | Master folder for execution plans, permits and approved change orders.
+DOC02 | DOC01 | RB-PLN-001 | Project Execution and Controls Plan | Contract and Change Order | Approved | Rev 1 | M. Alvarez | 2026-06-22 15:30 | Y | PM0105, PM0110 | Defines WBS, baseline control rules, monthly update cadence and change management.
+DOC03 | DOC01 | RB-HSE-001 | Site-Specific Safety Plan and LOTO Procedure | Safety Plan | Approved | Rev 2 | R. Kowalski | 2026-06-25 15:30 | Y | PM0120, PM0140, DM1000 | Mandatory safety procedures, confined space rules and plant lockout coordination.
+DOC04 | DOC01 | RB-PRM-101 | County Building and Excavation Permit #2026-8841 | Permit and Regulatory | Approved | Rev 0 | D. Patel | 2026-07-10 15:30 | Y | PM0130, ST0100 | Approved structural foundation and underground utility trenching permit.
+DOC05 | DOC01 | RB-PRM-102 | State Water Reuse and Filtration Permit Addendum | Permit and Regulatory | Approved | Rev 0 | D. Patel | 2026-07-22 15:30 | Y | PM0135, A500 | Environmental authorization supporting the state grant and backwash discharge.
+DOC06 | DOC01 | RB-CO-001 | Change Order 001 - Pipe Rack Freeze Protection | Contract and Change Order | Approved | Rev 0 | M. Alvarez | 2026-08-14 14:00 | N | A200, EL2010, PI2010 | Adds electric heat tracing and aluminum-jacketed fiberglass insulation on 10-inch header.
+DOC07 | | RB-PKG-02 | 02 - Engineering IFC Drawing Packages | Engineering Drawing | Issued for Construction | Rev 2 | D. Patel | 2026-09-01 15:30 | N | ENG | Issued for construction drawings across process, civil, mechanical and E&I disciplines.
+DOC08 | DOC07 | RB-PID-001 | Process Water System P&IDs (Sheets 1-14) | Engineering Drawing | Issued for Construction | Rev 2 | D. Patel | 2026-07-24 15:30 | Y | EN0060, EN0080, EN0085 | Complete P&ID set incorporating all HAZOP safety action items.
+DOC09 | DOC07 | RB-CS-100 | Civil Foundation and Pipe Rack Structural IFC Set | Engineering Drawing | Issued for Construction | Rev 1 | D. Patel | 2026-08-18 15:30 | Y | EN0120, EN0130, CV1010, CV2010, CV5020 | Foundations, anchor bolt plans, containment curbing and 6-bent galvanized rack framing.
+DOC10 | DOC07 | RB-ME-200 | Piping Isometrics and Outage Tie-In Package | Engineering Drawing | Issued for Construction | Rev 1 | D. Patel | 2026-08-28 15:30 | Y | EN0220, EN0240, PP2000, PP3120, PP3220 | Isometric spool sheets, weld maps and tie-in details for TI-01, TI-02 and TI-03.
+DOC11 | DOC07 | RB-EI-300 | Electrical One-Line, Arc Flash Study and Loop Diagrams | Engineering Drawing | Issued for Construction | Rev 1 | D. Patel | 2026-09-04 15:30 | Y | EN0305, EN0320, EN0340, EL4030 | 4160V/480V distribution, VFD schematics, grounding grid and analyzer loop wiring.
+DOC12 | DOC07 | RB-DCS-400 | DCS Control Narrative and Cause-and-Effect Matrix | Specification | Approved | Rev 1 | D. Patel | 2026-09-02 15:30 | Y | EN0315, EN0335, DC6020 | Lead-lag pump control, filtration backwash automation and interlock shutdown table.
+DOC13 | | RB-PKG-03 | 03 - Major Equipment Vendor Submittals | Vendor Submittal | Approved | Rev 1 | S. Novak | 2026-08-25 15:30 | N | PROC | Certified vendor drawings, datasheets and shop test reports.
+DOC14 | DOC13 | RB-VND-101 | Pumps P-101A/B Certified Outline and Performance Curves | Vendor Submittal | Approved | Rev 2 | S. Novak | 2026-07-20 15:30 | Y | PR0110, PR0125, EQ1010 | Certified baseplate anchor layout, NPSH curves and hydro/witness test requirements.
+DOC15 | DOC13 | RB-VND-201 | Transformer TX-401 and MCC-401 Certified Drawings | Vendor Submittal | Approved | Rev 1 | S. Novak | 2026-08-12 15:30 | Y | PR0210, PR0227, EL4010 | 1500 kVA oil-filled transformer outline, containment volume and MCC bucket layout.
+DOC16 | DOC13 | RB-VND-501 | Filtration Skid FL-501 and Chemical Tanks Submittal | Vendor Submittal | Approved | Rev 1 | S. Novak | 2026-08-24 15:30 | Y | PR0355, PR0360, EQ5010 | Dual-vessel multimedia filtration skid piping, media specs and PLC interface points.
+DOC17 | DOC13 | RB-VND-601 | Marshalling Cabinet CP-601 Wiring and FAT Procedure | Vendor Submittal | In Review | Rev 0 | S. Novak | 2026-10-05 15:30 | Y | PR0375, PR0830, DC6010 | Terminal block layout, redundant power supply schematic and FAT checklist.
+DOC18 | | RB-PKG-04 | 04 - Quality, Hydrotest and Commissioning Packages | Quality and Test Plan | In Review | Rev 1 | T. Brooks | 2026-10-08 15:30 | N | COMM | Inspection and test plans, weld radiography logs, hydrotest packs and SAT scripts.
+DOC19 | DOC18 | RB-QA-001 | Project Quality Assurance Plan and Weld ITP | Quality and Test Plan | Approved | Rev 1 | R. Kowalski | 2026-06-24 15:30 | Y | PM0150, PM0160, PP0130 | ASME B31.3 weld qualification, 10 percent random NDE and 100 percent tie-in NDE criteria.
+DOC20 | DOC18 | RB-QA-010 | Master Hydrotest and Passivation Test Packages | Quality and Test Plan | Approved | Rev 0 | T. Brooks | 2026-09-10 15:30 | Y | EN0230, PP1030, PP2040, PP3040, PP5040 | Test pressures, isolation blind lists, gauge calibration sheets and citric passivation spec.
+DOC21 | DOC18 | RB-OUT-001 | February Plant Outage Execution Playbook | Safety Plan | Draft | Rev 0 | R. Kowalski | 2026-10-09 15:30 | Y | PM0220, PM0230, PP3100 | Shift-by-shift tie-in sequence, contingency welder plan and operations handback protocol.
+DOC22 | DOC18 | RB-COM-001 | DCS SAT and 30-Day Reliability Test Protocol | Quality and Test Plan | Draft | Rev 0 | T. Brooks | 2026-10-10 15:30 | Y | CM9135, CM9160, CM9190 | Acceptance criteria for heat transfer, filtration turbidity, vibration and continuous uptime.
+
+## risk categories
+Schedule
+Procurement
+Technical
+Safety and Outage
+Geotechnical and Site
+Weather
+Regulatory
+
+# code | name | category | kind (Threat, Opportunity) | status (Proposed, Open, Active, Rejected, Impacted, Managed) | owner | identified_by | date | response (Accept, Avoid, Transfer, Reduce, Exploit, Facilitate, Enhance, Reject) | pre_p | pre_s | pre_c | post_p | post_s | post_c | activities | desc | cause | effect | response_text | notes
+## risks
+RSK-001 | Pump P-101A/B vendor assembly and test delay | Procurement | Threat | Active | BUYER | PM | 2026-07-15 09:00 | Reduce | High | High | Medium | Medium | Low | Low | PR0125, PR0130, EQ1010 | Pump vendor shop test bay congestion threatens late delivery of pumps P-101A and P-101B. | Impeller dynamic balancing machine outage at vendor foundry added 3 days to assembly. | Late pump setting compresses Area 100 piping and pushes Mechanical Completion float. | Deployed weekly expediter shop visits and locked witness test slot in advance. | Currently tracking 3-day slip in October update; recovery plan under review.
+RSK-002 | Plant outage window overrun on header tie-ins | Safety and Outage | Threat | Active | SUPT | PM | 2026-06-20 10:00 | Avoid | Medium | Very High | High | Low | Medium | Low | PP3100, PP3120, PP3220, PP3400 | Welded tie-ins TI-01 and TI-02 could exceed the fixed February plant outage window. | Residual water in isolated headers or weld NDE rejection requiring cut-out and re-weld. | Every day past the outage finish costs plant lost production and triggers liquidated damages. | Pre-bevel all tie-in tees, stage backup certified welders and book dedicated outage radiography crew. | Tabletop rehearsal scheduled in PM0230 two weeks before outage.
+RSK-003 | Owner-furnished heat exchanger E-301 late delivery | Procurement | Threat | Open | PM | ENGR | 2026-07-02 14:00 | Transfer | Medium | High | Medium | Low | Medium | Low | PR0320, EQ3000, EQ3010 | Owner-supplied plate heat exchanger E-301 arrives after January 8 target date. | Direct owner vendor shipping congestion during year-end holiday window. | Delays 250-ton crawler crane lift and pushes Area 300 piping into the February outage window. | Owner retains delivery liability under contract; weekly owner-vendor status check established. | Current vendor report shows January 5 ship date, holding 3 days buffer.
+RSK-004 | Uncharted underground utilities in Area 500 and ductbank | Geotechnical and Site | Threat | Managed | FE | SUPT | 2026-06-28 08:00 | Reduce | High | Medium | Medium | Low | Low | Low | ST0125, CV5000, CV6000 | Legacy plant drawings may miss abandoned cooling lines or live electrical conduits. | Plant built in 1978 with incomplete as-built records in the south utility corridor. | Trenching stop-work, rerouting redesign and potential safety strike hazard. | Performed GPR scanning and vacuum hydro-excavation potholing in ST0125 prior to mechanical digging. | Potholing found two abandoned 3-inch lines; routed ductbank 4 feet north without delay.
+RSK-005 | Soft clay subgrade under Area 300 crane mat and pad | Geotechnical and Site | Threat | Active | SUPT | FE | 2026-09-12 11:00 | Reduce | High | Medium | High | Medium | Low | Medium | CV3005, EQ3005, EQ3010 | High autumn groundwater softens clay soils along the 250-ton crawler crane travel path. | Seasonal rainfall combined with low bearing capacity noted in Heartland GeoTesting borings. | Unsafe crane ground bearing pressure requiring additional timber mats and gravel stabilization. | Submitted CO-003 for engineered crane matting and sump dewatering prior to heavy lift. | Dewatering pump mobilized; CO-003 pending owner commercial approval.
+RSK-006 | Winter freeze conditions delaying concrete and epoxy curing | Weather | Threat | Open | GF | SUPT | 2026-08-20 13:00 | Reduce | Medium | Medium | Medium | Low | Low | Low | CV1020, CV5030, CV5060 | Ambient temperatures below 40 degrees F halt concrete placement and epoxy lining cure. | Late autumn cold snaps in Midwest region during November concrete and coating windows. | Coating delamination or low 7-day concrete break strength requiring rework. | Reserve heated enclosure tents, insulating concrete blankets and indirect-fired heaters on standby. | Included in winter weather contingency checklist.
+RSK-007 | Transformer TX-401 factory witness test failure | Technical | Threat | Open | ENGR | QC | 2026-08-10 15:00 | Reduce | Low | High | Medium | Very Low | Medium | Low | PR0225, PR0227, EL4010 | Insulation resistance or impulse test non-conformance during witnessed factory test. | Core-to-coil winding moisture or tap-changer assembly defect. | 3-to-4 week factory rework delaying Area 400 energization and motor bump testing. | Require vendor pre-test report 5 days before witness trip and mid-build QA hold point. | Winding phase progressing cleanly on schedule.
+RSK-008 | Pipefitter and certified welder craft labor shortage | Schedule | Threat | Active | GF | SUPT | 2026-09-05 09:00 | Reduce | Medium | High | High | Low | Medium | Medium | PP1000, PP2000, PP3000, PP5000 | Peak simultaneous piping across Areas 100, 200, 300 and 500 stretches regional craft supply. | Competing refinery and industrial turnarounds in the region during Q4 2026. | Reduced daily weld productivity and craft overtime cost overrun. | Pre-fabricate 70 percent of spools in off-site fab shop and stagger Area 500 stainless crew start. | Monitoring weekly weld-inch burn rate against plan.
+RSK-009 | DCS interface mismatch with existing plant control network | Technical | Threat | Open | AUTO | CXE | 2026-08-28 16:00 | Reduce | Medium | Medium | Medium | Low | Low | Low | EN0335, PR0830, DC6020, CM9135 | Existing plant DCS firmware version may require custom Modbus/OPC mapping for new VFDs and analyzers. | Legacy plant control room runs an older controller revision not fully documented in RFP. | Extended loop-check and SAT duration threatening startup milestone CM9180. | Conduct full cabinet CP-601 FAT with owner controls engineer and test VFD communication early. | Spare I/O module request logged under CO-005.
+RSK-010 | Filtration skid FL-501 stainless weld borescope rework | Technical | Threat | Open | QC | BUYER | 2026-09-18 10:00 | Reduce | Medium | Low | Medium | Low | Very Low | Low | PR0360, PR0820, PP5030 | Inadequate argon back-purging on stainless chemical lines causes sugar welds failing QA. | Strict internal corrosion resistance requirements for chemical feed piping. | Re-welding and re-passivation delaying Area 500 pre-commissioning. | Enforce purge oxygen analyzer checks (<50 ppm) and perform vendor shop inspection PR0820. | QC witness checklist issued to fab shop and vendor.
+RSK-011 | Early delivery of pipe rack steel enables pre-assembly | Schedule | Opportunity | Proposed | SUPT | GF | 2026-09-22 14:00 | Enhance | Medium | Medium | Low | High | Medium | Medium | CV2100, CV2110, PP2000 | Galvanized pipe rack bents may arrive 5 days ahead of schedule from steel fabricator. | Fabricator completed prior commercial order early and moved Riverbend ahead in galvanizing queue. | Ground-assembling bent frames saves 4 days of crane time and improves Area 200 header float. | Prepare extra laydown bolting skids in ST0105 to pre-assemble bents 1 through 4 on the ground. | Expediter confirming final shipping schedule in PR0810.
+RSK-012 | Parallel commissioning of Area 500 filtration skid | Schedule | Opportunity | Open | CXE | PM | 2026-10-01 11:00 | Exploit | High | Medium | Low | High | Medium | Low | PC9010, CM9032, CM9145 | Area 500 filtration skid can be wet-commissioned on temporary water before header tie-in outage. | Independent potable/utility feed allows backwash and analyzer verification ahead of tie-ins. | De-risks integrated startup and removes 3 days from post-outage commissioning pressure. | Add temporary hose bypass in PC9010 test pack and schedule early vendor tech mobilization. | Operations team supportive; final safety review underway.
+
+# wbs (PROJECT or code) | param_id | detail (Activities, WBS) | priority (Top, High, Normal, Low, Lowest) | status (Enabled, Disabled) | obs | low | high | win_start | win_end
+## thresholds
+CONST | 17 | Activities | High | Enabled | CONM | 5 | | 2026-06-01 00:00 | 2027-06-01 00:00
+PROC | 16 | Activities | Top | Enabled | PROCM | -2 | | 2026-06-01 00:00 | 2027-06-01 00:00
+PROJECT | 6 | WBS | High | Enabled | PMO | 0.95 | | 2026-06-01 00:00 | 2027-06-01 00:00
+CONST | 9 | WBS | Normal | Enabled | CONM | 0.95 | | 2026-06-01 00:00 | 2027-06-01 00:00
+PROJECT | 5 | Activities | Normal | Enabled | PMO | | 105 | 2026-06-01 00:00 | 2027-06-01 00:00
+A300.TIE | 18 | Activities | Top | Enabled | CONM | 0 | | 2027-01-01 00:00 | 2027-04-01 00:00
+
+# name | priority (Top, High, Normal, Low, Lowest) | status (Open, On Hold, Closed) | obs | identified_by | add_date | resolv_date | target (WBS or Activity ID) | param_id (or blank) | value | low | high | notes | history
+## issues
+Pump vendor assembly slip exceeding 2-day finish variance | Top | Open | PROCM | S. Novak | 2026-10-08 09:00 | | PR0125 | 16 | -3 | -2 | | Pump vendor reported 3-day assembly slip due to impeller balancing fixture maintenance. Expediter reviewing overtime shift to recover 2 days before shipment. | 2026-10-08: Issue raised during October schedule update; vendor recovery schedule requested by Oct 16.
+Area 200 rack footing rebar labor overrun above 105% budget | High | Open | CONM | R. Kowalski | 2026-10-05 15:00 | | CV2010 | 5 | 110 | | 105 | Tight anchor bolt congestion at bents 3 and 4 required extra carpenter and ironworker hours. Reviewing bent 5-6 forming method to hold remaining civil budget. | 2026-10-05: Flagged by Cost % of Budget threshold during weekly labor review.
+Piping design engineering hours 8% over budget | Normal | Closed | ENGM | D. Patel | 2026-08-26 14:00 | 2026-09-18 16:00 | EN0200 | 5 | 108 | | 105 | Extra iterations on 10-inch thermal expansion loop and winter freeze protection tie-ins increased piping engineering hours. | 2026-08-26: Logged after 90% model review. 2026-09-18: Closed after IFC piping release; hours covered by CO-001 engineering allowance.
+Soft soil stabilization and crane mat scope pending CO-003 | High | Open | CONM | R. Kowalski | 2026-10-02 16:00 | | CV3005 | | | | | Subgrade proof-roll along Area 300 crane access lane showed soft wet clay. Additional timber matting priced in CO-003 and awaiting owner sign-off. | 2026-10-02: CO-003 submitted to owner PM ($68,500).
+Control room DCS spare I/O and fiber ring request (CO-005) | Normal | On Hold | COMMM | T. Brooks | 2026-10-09 11:00 | | DC6010 | | | | | Plant operations requested 20% spare analog channels and redundant ring fiber path for Area 500 analyzers. Held pending owner operations budget review. | 2026-10-09: Technical scope defined; commercial approval deferred to next steering meeting.
+Bent 4 west column anchor bolt out-of-tolerance field sketch SK-07 | Normal | Closed | ENGM | D. Patel | 2026-09-29 10:00 | 2026-10-04 15:00 | CV2110 | | | | | Anchor bolt template shifted 3/8 inch on bent 4 west pedestal. Engineer issued repair sketch SK-07 with oversized baseplate washer plate; accepted by owner QA. | 2026-09-29: NCR-004 opened. 2026-10-04: SK-07 approved and closed prior to steel erection.
+Abandonment demolition crew overrun at Area 300 strainer | Low | Closed | CONM | R. Kowalski | 2026-09-15 16:00 | 2026-09-22 15:00 | DM3000 | 5 | 120 | | 105 | Corroded flange bolts on abandoned strainer required hot-work torch cutting and extra fire watch hours. | 2026-09-15: Logged on completion of DM3000. 2026-09-22: Closed; total impact under $4,500 absorbed in Area 300 contingency.
+Owner witness date confirmation for TX-401 factory test | Normal | Open | PROCM | S. Novak | 2026-10-10 13:00 | | PR0227 | | | | | Need owner electrical engineer travel confirmation for mid-November transformer TX-401 factory witness testing to avoid ship hold. | 2026-10-10: Sent calendar invite and draft test protocol to owner plant electrical lead.
 
 # target (PROJECT, a WBS code or an activity) | topic | text
 ## notes
-PROJECT | Scope | Replace the two worn process water pumps in the existing pump house with new pumps P-101A and P-101B, run a new 10-inch header across a new six-bent pipe rack to the owner furnished plate heat exchanger E-301, and tie the new system into the existing cooling water supply and return headers during the February plant outage. A new 1500 kVA transformer and motor control center feed the pumps.
-PROJECT | Basis and Assumptions | Crews work a 6-day, 10-hour week. Office, engineering and procurement work a 5-day, 8-hour week. Concrete cures and the outage tie-ins run 7 days a week. Rates include burden and small tools. The pumps are lump sum from the pump vendor; installation is ours.
-PROJECT | Constraints and Access | The plant outage window is fixed by operations: headers are drained and isolated on Saturday 13 February. All header work must finish inside the outage. Mechanical completion is a contract date.
-PROJECT | Safety | Lockout and line break permits from plant operations are required before any work on the existing pumps and headers. Daily job hazard analysis at the 6 AM toolbox talk.
-PROJECT | Quality and Inspection | Field welds are radiographed by a third party. Tie-in welds are radiographed 100 percent. Hydrotests are witnessed by the owner inspector.
-PROJECT | Change Notes | Change 001 (approved): add freeze protection heat tracing and insulation on the pipe rack header, added after the owner's winter review.
-A100 | Scope | Demolish the old pumps P-1 and P-2, their bases, piping and power cables, then build new foundations and install pumps P-101A and P-101B with their piping, power, controls and instruments.
+PROJECT | Scope | Replace the two worn process water pumps in the existing pump house with new VFD-driven pumps P-101A and P-101B, run a new 10-inch header across a new six-bent pipe rack to the owner furnished plate heat exchanger E-301, install a new Area 500 multimedia filtration and chemical feed skid (FL-501), integrate a new control room DCS marshalling cabinet (CP-601) with fiber backbone, and tie into the existing cooling water supply and return headers during the February plant outage. A new 1500 kVA transformer and motor control center feed the upgraded system.
+PROJECT | Basis and Assumptions | Crews work a 6-day, 10-hour week. Office, engineering and procurement work a 5-day, 8-hour week. Concrete cures and the outage tie-ins run 7 days a week. Rates include burden and small tools. The pumps and filtration skid are lump sum from equipment vendors; installation is self-performed and subcontracted under EPC-GMP.
+PROJECT | Constraints and Access | The plant outage window is fixed by operations: headers are drained and isolated on Saturday 13 February 2027. All header work must finish inside the outage. Mechanical completion is a contract date.
+PROJECT | Safety | Lockout and line break permits from plant operations are required before any work on the existing pumps and headers. Daily job hazard analysis at the 6 AM toolbox talk. Chemical handling permits apply during Area 500 passivation and dosing checkout.
+PROJECT | Quality and Inspection | Field welds are radiographed by a third party (10 percent random on carbon steel, 100 percent on outage tie-ins and borescope on Area 500 stainless). Hydrotests and DCS SAT are witnessed by the owner inspector.
+PROJECT | Change Notes | Change 001 (approved, +$145,000): add freeze protection heat tracing and insulation on the pipe rack header. Change 002 (approved, +$210,000): upgrade Area 500 containment curb and dual-wall chemical lines per state grant terms. Changes 003 and 005 pending commercial review.
+A100 | Scope | Demolish the old pumps P-1 and P-2, their bases, piping and power cables, then build new foundations and install VFD-driven pumps P-101A and P-101B with their piping, power, controls and vibration monitoring instruments.
 A100.DEMO | Safety | Old pump bases contain asbestos-free grout per the owner's survey dated 12 May. Old motors go to the owner's scrap yard, not off site.
 A200 | Constraints and Access | Bents 3 and 4 sit beside the plant road. Crane picks over the road need a flagger and the road closed for the lift.
 A300.TIE | Constraints and Access | Tie-ins TI-01 and TI-02 are welded tees on live headers after isolation; TI-03 is a flanged drain connection. Each welded tie-in is radiographed before the leak test.
 A300.TIE | Quality and Inspection | Prefabricate the tie-in tees and pre-bevel the spools before the outage. Keep spare gaskets and a second welding machine on hand.
 A400 | Safety | Energizing TX-401 is done only under owner switching orders. Arc flash labels go up before the room is turned over.
-COMM | Basis and Assumptions | Owner operations runs the control system. Our scope ends at the marshalling cabinet terminals; the owner configures the control system.
-MS0000 | Field Notes | Notice to proceed received by email from the owner's project manager.
+A500 | Scope | New multimedia filtration skid FL-501, chemical day tanks TK-501 and TK-502, epoxy-coated containment pad, stainless headers, online water quality analyzer rack AN-501 and emergency safety shower.
+A500 | Safety | Acid/caustic chemical dosing lines require dual-wall containment and a tested emergency eyewash and safety shower before chemical delivery.
+A600 | Scope | Underground concrete-encased fiber/control ductbank, control room DCS marshalling cabinet CP-601, plant instrument air extension, backwash drain tie-in and final roadway paving restoration.
+COMM | Basis and Assumptions | Owner operations runs the main plant DCS servers. Our automation integrator configures the new Riverbend HMI screens, lead-lag pump logic and filtration backwash sequence up through SAT and 30-day reliability run.
+MS0000 | Field Notes | Notice to proceed received by email from the owner's project manager on June 1, 2026.
+EN0070 | Safety | HAZOP completed with 6 action items: added high-pressure discharge relief valve, low-suction pump trip and dual-wall chemical line leak detector.
 PR0120 | Field Notes | Pump vendor reports castings poured on schedule. Shop test witness trip booked.
-PR0220 | Change Notes | Vendor offered an earlier ship date for a premium; declined, the standard date holds the plan.
+PR0125 | Change Notes | Impeller balancing fixture repair added 3 days to assembly; expediter working overtime recovery option with vendor shop manager.
+PR0220 | Change Notes | Vendor offered an earlier ship date for a $42,000 premium (CO-004); declined because standard transit preserves float.
 PR0320 | Constraints and Access | The owner purchased E-301 directly. Delivery is the owner's; we receive, set and connect it.
+PR0360 | Quality and Inspection | Filtration skid vendor to provide certified ASME vessel U-1A forms and hydrostatic test charts prior to release.
 DM1020 | Safety | Pipe may hold residual water and scale. Drain at low points before cutting. Hot work permit each shift.
 CV1020 | Quality and Inspection | Slump and cylinders taken by the testing lab. Pour only above 40 degrees F with blankets on hand.
 CV2110 | Field Notes | Bents 1 and 2 set on the first day; anchor bolt at bent 4 west column was out of tolerance and was corrected by the engineer's sketch SK-07.
-EQ3010 | Safety | Critical lift plan required for the 250-ton crane. Lift plan reviewed by the rigging engineer.
+CV5060 | Quality and Inspection | Concrete moisture vapor test must pass below 3 lbs/1000 SF/24 hr before applying chemical-resistant epoxy primer.
+EQ3010 | Safety | Critical lift plan required for the 250-ton crane. Lift plan reviewed by the rigging engineer and approved by plant safety.
+EQ5010 | Field Notes | Filtration skid FL-501 weighs 18,400 lbs dry; verify pad curing reaches 4000 psi break strength before setting.
 PP2000 | Field Notes | Header spools arriving from the fab shop in rack order. Two welders on the rack, one at the fab shop.
 PP2000 | Quality and Inspection | Weld map kept in the field office; welder stencil on every weld.
 PP3120 | Quality and Inspection | Hold point: owner inspector to witness fit up before welding.
 PP3400 | Constraints and Access | Owner operations opens the header block valves slowly; we stand by with two fitters until the leak test is accepted.
+PP5000 | Quality and Inspection | Maintain argon back-purge below 50 ppm O2 on all 316L stainless steel butt welds; borescope sample 20 percent.
 EL4070 | Safety | Energized work permit and switching order required. Only qualified electricians in the room.
-CM9050 | Change Notes | Contract date unchanged after change 001; the heat tracing work fits inside the plan.
+DC6020 | Commissioning Notes | Coordinate DCS download during Tuesday plant maintenance window so existing plant HMI consoles experience zero interruption.
+CM9050 | Change Notes | Contract date unchanged after changes 001 and 002; heat tracing and Area 500 filtration work fit inside the plan.
+CM9135 | Commissioning Notes | Test all 48 new analog and discrete I/O points, VFD Modbus telemetry and emergency shutdown interlocks with owner controls engineer.
 CM9150 | Field Notes | Pump vendor startup technician booked for three days.
+
+# calendar | name | start | end
+## financial periods
+Riverbend Monthly Periods | 2026-06 Jun | 2026-06-01 00:00 | 2026-06-30 23:59
+Riverbend Monthly Periods | 2026-07 Jul | 2026-07-01 00:00 | 2026-07-31 23:59
+Riverbend Monthly Periods | 2026-08 Aug | 2026-08-01 00:00 | 2026-08-31 23:59
+Riverbend Monthly Periods | 2026-09 Sep | 2026-09-01 00:00 | 2026-09-30 23:59
+Riverbend Monthly Periods | 2026-10 Oct | 2026-10-01 00:00 | 2026-10-31 23:59
+Riverbend Monthly Periods | 2026-11 Nov | 2026-11-01 00:00 | 2026-11-30 23:59
+Riverbend Monthly Periods | 2026-12 Dec | 2026-12-01 00:00 | 2026-12-31 23:59
+Riverbend Monthly Periods | 2027-01 Jan | 2027-01-01 00:00 | 2027-01-31 23:59
+Riverbend Monthly Periods | 2027-02 Feb | 2027-02-01 00:00 | 2027-02-28 23:59
+Riverbend Monthly Periods | 2027-03 Mar | 2027-03-01 00:00 | 2027-03-31 23:59
+Riverbend Monthly Periods | 2027-04 Apr | 2027-04-01 00:00 | 2027-04-30 23:59
+Riverbend Monthly Periods | 2027-05 May | 2027-05-01 00:00 | 2027-05-31 23:59
 
 # Progress at the data date. A slip adds working days to an activity's
 # remaining duration; an overrun scales its actual units.
 ## progress
 data date | 2026-10-12 00:00
+revision date | 2026-08-17 00:00
 slip | PR0125 | 3
 overrun | EN0200 | 1.08
 overrun | PR0110 | 1.10
@@ -468,3 +1020,5 @@ overrun | ST0100 | 1.15
 overrun | DM3000 | 1.20
 overrun | CV3010 | 1.12
 overrun | CV2010 | 1.10
+overrun | EN0060 | 1.06
+overrun | PR0360 | 1.05

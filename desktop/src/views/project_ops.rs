@@ -78,6 +78,8 @@ pub struct DeleteConfirm {
     pub title: String,
     pub activities: usize,
     pub baselines: usize,
+    /// The project is currently open and will be closed first.
+    pub open: bool,
     /// The project is the first-run sample: its own dictionary rows go too.
     pub sample: bool,
 }
@@ -357,26 +359,29 @@ impl App {
         Ok(id)
     }
 
-    /// Projects view Delete: ask first. Open projects are refused.
+    /// Projects view Delete: ask first. Open projects are closed before removal.
     pub(crate) fn request_project_delete(&mut self, id: i64) {
-        if self.is_open(id) || self.workspace_row() == Some(id) {
-            self.error("An open project cannot be deleted. Close it first.".into());
-            return;
-        }
+        let open = self.is_open(id) || self.workspace_row() == Some(id);
         let Ok(Some(row)) = bstore::project_row(self.store.connection(), id) else {
             return;
         };
-        let activities = Document::parse(&row.xer)
-            .ok()
-            .and_then(|d| {
-                d.table("TASK").map(|t| {
-                    t.rows
-                        .iter()
-                        .filter(|r| t.value(r, "proj_id").trim() == row.project_key.to_string())
-                        .count()
+        let activities = if self.open_set.active == Some(id) || self.workspace_row() == Some(id) {
+            self.project.model.activities.len()
+        } else if let Some(p) = self.open_set.parked.iter().find(|p| p.id == id) {
+            p.project.model.activities.len()
+        } else {
+            Document::parse(&row.xer)
+                .ok()
+                .and_then(|d| {
+                    d.table("TASK").map(|t| {
+                        t.rows
+                            .iter()
+                            .filter(|r| t.value(r, "proj_id").trim() == row.project_key.to_string())
+                            .count()
+                    })
                 })
-            })
-            .unwrap_or(0);
+                .unwrap_or(0)
+        };
         let sample = openxer_automation::workspace_db::read_sample(self.store.connection())
             .ok()
             .flatten()
@@ -386,14 +391,35 @@ impl App {
             title: row.title,
             activities,
             baselines: bstore::count(self.store.connection(), id),
+            open,
             sample,
         });
     }
 
     /// Remove workspace project `id` with its baselines, as one undo step.
+    /// If the project is open, it is saved and closed first; closing the last
+    /// open project leaves the workspace in the empty state on Projects view.
     pub(crate) fn delete_workspace_project(&mut self, id: i64, time: f64) -> Result<(), String> {
+        crate::first_run::mark_seeded(&self.store);
+        if self.open_set.parked.iter().any(|p| p.id == id) {
+            self.close_project_id(id);
+        }
+        if !self.open_set.empty
+            && (self.open_set.active == Some(id) || self.workspace_row() == Some(id))
+        {
+            if self.dirty {
+                self.try_save()?;
+            }
+            if !self.open_set.parked.is_empty() {
+                self.close_active_project();
+            } else {
+                self.enter_empty_workspace();
+            }
+        }
         if self.is_open(id) || self.workspace_row() == Some(id) {
-            return Err("An open project cannot be deleted. Close it first.".into());
+            return Err(
+                "The project could not be saved and closed, so nothing was deleted.".into(),
+            );
         }
         let c = self.store.connection();
         let row = bstore::project_row(c, id)?.ok_or("The project no longer exists")?;
@@ -444,8 +470,7 @@ impl App {
 
     /// What deleting EPS node `eps` takes: the node and the nodes under it,
     /// the workspace projects filed in them and their baselines. Refused
-    /// for the last top-level node, and when every workspace project is in
-    /// the node while one of them is open (one project always stays open).
+    /// for the last top-level node.
     fn folder_delete_plan(&mut self, eps: i64) -> Result<FolderPlan, String> {
         let ws = self.workspace().clone();
         if !ws.eps().iter().any(|n| n.id == eps) {
@@ -456,15 +481,6 @@ impl App {
         }
         let ids = self.workspace_ids();
         let (nodes, projects) = ws.folder_contents(eps, &ids);
-        let open_inside = projects
-            .iter()
-            .any(|p| self.is_open(*p) || self.workspace_row() == Some(*p));
-        if open_inside && ids.iter().all(|p| projects.contains(p)) {
-            return Err(format!(
-                "Every project of the workspace is filed under {}, and one project always stays open. Add or move a project to another EPS node first.",
-                ws.eps_value(eps, "eps_name")
-            ));
-        }
         let c = self.store.connection();
         let baselines = projects.iter().map(|p| bstore::count(c, *p)).sum();
         Ok(FolderPlan {
@@ -519,13 +535,19 @@ impl App {
             || self.workspace_row().is_some_and(|a| going.contains(&a));
         if active_inside {
             if self.open_set.parked.is_empty() {
-                let other = self
+                if self.dirty {
+                    self.try_save()?;
+                }
+                if let Some(other) = self
                     .workspace_ids()
                     .into_iter()
                     .find(|id| !going.contains(id))
-                    .ok_or("No project outside this EPS node can stay open.")?;
-                let p = self.store.load(other)?;
-                self.load(p);
+                {
+                    let p = self.store.load(other)?;
+                    self.load(p);
+                } else {
+                    self.enter_empty_workspace();
+                }
             } else {
                 self.close_active_project();
             }
@@ -549,6 +571,7 @@ impl App {
     /// current afterwards brings back the nodes, the projects (closed), their
     /// baselines and baseline choices.
     pub(crate) fn delete_folder(&mut self, eps: i64, time: f64) -> Result<(), String> {
+        crate::first_run::mark_seeded(&self.store);
         let plan = self.folder_delete_plan(eps)?;
         let name = self.workspace().eps_value(eps, "eps_name");
         self.close_for_folder_delete(&plan.projects)?;
@@ -615,8 +638,10 @@ impl App {
         let Some(record) = workspace_db::read_sample(c)?.filter(|s| s.row == id) else {
             return Ok(None);
         };
-        let mut open: Vec<(Option<i64>, &Document)> =
-            vec![(self.open_set.active, &self.project.document)];
+        let mut open: Vec<(Option<i64>, &Document)> = vec![];
+        if !self.open_set.empty {
+            open.push((self.open_set.active, &self.project.document));
+        }
         open.extend(
             self.open_set
                 .parked
@@ -750,6 +775,11 @@ impl App {
         }
         if let Some(d) = self.views.projects.delete.take() {
             let mut rects = vec![];
+            let open_note = if d.open {
+                "It is currently open and will be closed first. "
+            } else {
+                ""
+            };
             let clicked = crate::kit_window::message_box(
                 ctx,
                 "delete_project",
@@ -757,12 +787,12 @@ impl App {
                 crate::kit_window::MessageIcon::Question,
                 &if d.sample {
                     format!(
-                        "Remove the sample project {}?\nIts {} activities and {} baseline(s) are removed from the workspace, with the calendars, resources, codes and notebook topics only the sample uses.",
+                        "Remove the sample project {}?\n{open_note}Its {} activities and {} baseline(s) are removed from the workspace, with the calendars, resources, codes and notebook topics only the sample uses.",
                         d.title, d.activities, d.baselines
                     )
                 } else {
                     format!(
-                        "Delete project {}?\n{} activities and {} baseline(s) are removed from the workspace.",
+                        "Delete project {}?\n{open_note}{} activities and {} baseline(s) are removed from the workspace.",
                         d.title, d.activities, d.baselines
                     )
                 },

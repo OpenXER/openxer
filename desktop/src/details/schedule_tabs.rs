@@ -1455,55 +1455,130 @@ impl App {
         // the search text, the project, Group and Sort and the selection stay
         // as they are; with several projects open they are built each frame.
         let multi = self.open_set.multi();
+        let active_rows = self.active_rows();
+        let filter = self.detail.picker_filter;
+        let group_mode = self.detail.picker_group;
+        let extra_cols: Vec<PickerColumn> = self.detail.picker_columns.iter().copied().collect();
         // Find looks inside folded bands too.
-        let folded = if query.trim().is_empty() {
-            self.detail.picker_collapsed.clone()
-        } else {
+        let searching = !query.trim().is_empty();
+        let folded = if searching {
             BTreeSet::new()
+        } else {
+            self.detail.picker_collapsed.clone()
+        };
+        let group_override = match group_mode {
+            PickerGroup::Wbs => None,
+            PickerGroup::List => {
+                let mut g = self.grid.layout.group_sort.clone();
+                g.levels.clear();
+                Some(g)
+            }
+            PickerGroup::Status => {
+                let mut g = self.grid.layout.group_sort.clone();
+                g.levels = vec![crate::grid::layout::GroupLevel {
+                    column: "status".into(),
+                    to_level: None,
+                    indent: true,
+                    interval: String::new(),
+                }];
+                Some(g)
+            }
         };
         let key = self.shown_serial().map(|serial| PickerLinesKey {
             query: query.clone(),
             collapsed: folded.clone(),
             serial,
             group_sort: self.grid.layout.group_sort.clone(),
+            filter,
+            group: group_mode,
             targets: std::iter::once(activity)
                 .chain(targets.iter().copied())
                 .collect(),
         });
         let kept = match (&key, &self.detail.picker_lines) {
-            (Some(key), Some((built_for, lines))) if key == built_for => Some(lines.clone()),
+            (Some(key), Some((built_for, lines, bands))) if key == built_for => {
+                Some((lines.clone(), bands.clone()))
+            }
             _ => None,
         };
-        let lines = kept.unwrap_or_else(|| {
-            let lines = std::rc::Rc::new(
-                self.picker_lines(query, &folded, &|k| k == activity || targets.contains(&k)),
-            );
-            self.detail.picker_lines = key.map(|key| (key, lines.clone()));
-            lines
+        let (lines, all_band_keys) = kept.unwrap_or_else(|| {
+            let shown_data = self.shown();
+            let crit_def = self.critical_definition();
+            let (built_lines, bands) =
+                self.picker_lines_with(query, &folded, group_override.clone(), &|k| {
+                    if k == activity || targets.contains(&k) {
+                        return true;
+                    }
+                    let a = &shown_data.model.activities[k];
+                    match filter {
+                        PickerFilter::All => false,
+                        PickerFilter::CurrentProject => active_rows.is_some_and(|n| k >= n),
+                        PickerFilter::NotStarted => a.status != StatusType::NotStarted,
+                        PickerFilter::InProgress => a.status != StatusType::InProgress,
+                        PickerFilter::Completed => a.status != StatusType::Completed,
+                        PickerFilter::Critical => !crate::grid::columns::is_critical(a, crit_def),
+                    }
+                });
+            let lines = std::rc::Rc::new(built_lines);
+            self.detail.picker_lines = key.map(|key| (key, lines.clone(), bands.clone()));
+            (lines, bands)
         });
         let all = self.shown();
+        let origin = all.model.origin_serial;
+        let leveled = all.model.options.do_level;
         let projects: Vec<String> = self
             .open_projects()
             .iter()
             .map(|p| p.model.project.name.clone())
             .collect();
-        let texts: Vec<[String; 3]> = lines
+        let texts: Vec<Vec<String>> = lines
             .iter()
             .map(|line| match line {
-                PickLine::Band { label, .. } => [String::new(), label.clone(), String::new()],
+                PickLine::Band { label, .. } => vec![label.clone()],
                 PickLine::Activity(k) => {
-                    let project = self
-                        .open_set
-                        .composite
-                        .as_ref()
-                        .and_then(|c| c.origin.get(*k))
-                        .and_then(|&(slot, _)| projects.get(slot).cloned())
-                        .unwrap_or_default();
-                    [
-                        project,
-                        all.model.activities[*k].task_code.clone(),
-                        all.name(*k).to_string(),
-                    ]
+                    let a = &all.model.activities[*k];
+                    let mut row = Vec::with_capacity(3 + extra_cols.len());
+                    if multi {
+                        let project = self
+                            .open_set
+                            .composite
+                            .as_ref()
+                            .and_then(|c| c.origin.get(*k))
+                            .and_then(|&(slot, _)| projects.get(slot).cloned())
+                            .unwrap_or_default();
+                        row.push(project);
+                    }
+                    row.push(a.task_code.clone());
+                    row.push(all.name(*k).to_string());
+                    let periods = format::activity_periods(all, *k);
+                    for col in &extra_cols {
+                        let value = match col {
+                            PickerColumn::Status => match a.status {
+                                StatusType::NotStarted => "Not Started".into(),
+                                StatusType::InProgress => "In Progress".into(),
+                                StatusType::Completed => "Completed".into(),
+                            },
+                            PickerColumn::OriginalDuration => {
+                                let orig = all
+                                    .details
+                                    .get(&a.task_id)
+                                    .map_or(a.rem, |d| d.original_duration);
+                                format::duration(orig, periods)
+                            }
+                            PickerColumn::Start => {
+                                format::date(origin, displayed_start(a, leveled))
+                            }
+                            PickerColumn::Finish => {
+                                format::date(origin, displayed_finish(a, leveled))
+                            }
+                            PickerColumn::TotalFloat => a
+                                .total_float
+                                .map(|f| format::duration(f, periods))
+                                .unwrap_or_default(),
+                        };
+                        row.push(value);
+                    }
+                    row
                 }
             })
             .collect();
@@ -1525,6 +1600,23 @@ impl App {
         let boxes = std::cell::RefCell::new(Vec::<(usize, Rect)>::new());
         let mut fold = None;
         let mut double = None;
+        let mut expand_all = false;
+        let mut collapse_all = false;
+        let mut copy_rows = false;
+        let mut open_table_font = false;
+        let mut next_filter = None;
+        let mut next_group = None;
+        let mut toggle_col = None;
+        let mut search_focused = false;
+        let has_bands = !all_band_keys.is_empty() && !searching;
+        let can_expand = has_bands
+            && all_band_keys
+                .iter()
+                .any(|k| self.detail.picker_collapsed.contains(k));
+        let can_collapse = has_bands
+            && all_band_keys
+                .iter()
+                .any(|k| !self.detail.picker_collapsed.contains(k));
         const DIALOG: &str = "assign_relationship";
         let title = if *predecessor {
             "Assign Predecessors"
@@ -1550,11 +1642,26 @@ impl App {
                 PickLine::Band { .. } => None,
             })
             .collect();
+        let mut columns: Vec<(&str, f32)> = if multi {
+            vec![
+                ("Project ID", 90.),
+                ("Activity ID", 90.),
+                ("Activity Name", 240.),
+            ]
+        } else {
+            vec![("Activity ID", 90.), ("Activity Name", 240.)]
+        };
+        for col in &extra_cols {
+            columns.push((col.label(), col.width()));
+        }
+        let extra_width: f32 = extra_cols.iter().map(|c| c.width()).sum();
+        let list_width = (if multi { 530. } else { 440. } + extra_width).min(780.);
         let mut choice = selected.map(|k| k as i64);
         let (open, clicked) = self.assign_window(ctx, &window, |app, ui| {
             ui.horizontal(|ui| {
                 ui.label("Find");
                 let response = ui.add(egui::TextEdit::singleline(query).desired_width(220.));
+                search_focused = response.has_focus();
                 app.action("picker_search", &response);
                 if targets.len() > 1 {
                     ui.label(format!(
@@ -1563,26 +1670,20 @@ impl App {
                     ));
                 }
             });
-            let columns: &[(&str, f32)] = if multi {
-                &[
-                    ("Project ID", 90.),
-                    ("Activity ID", 90.),
-                    ("Activity Name", 240.),
-                ]
-            } else {
-                &[("Activity ID", 90.), ("Activity Name", 240.)]
-            };
-            let out = app.assign_list(
+            let current_choice = choice;
+            let out = app.assign_list_with_menu(
                 ui,
                 DIALOG,
                 "relationship_picker",
-                columns,
+                &columns,
                 &keys,
                 &mut choice,
-                Vec2::new(if multi { 530. } else { 440. }, 210.),
+                Vec2::new(list_width, 210.),
                 &mut |ui, r, c, _| {
                     let Some((fill, ink)) = band_colors[r] else {
-                        cell(ui, &texts[r][c + usize::from(!multi)]);
+                        if let Some(t) = texts[r].get(c) {
+                            cell(ui, t);
+                        }
                         return;
                     };
                     // A band: its color across the row and its caption
@@ -1618,10 +1719,104 @@ impl App {
                             .text(
                                 Pos2::new(band_left.get() + 16. + indent, rect.center().y),
                                 Align2::LEFT_CENTER,
-                                &texts[r][1],
+                                &texts[r][0],
                                 form::font(),
                                 ink,
                             );
+                    }
+                },
+                &mut |ui, row| {
+                    use crate::chrome::{Icon, Item};
+                    let mut m = crate::context_menu::Menu::on(ui, "picker_menu");
+                    let row_is_activity =
+                        row.and_then(|r| keys.get(r)).is_some_and(Option::is_some);
+                    let can_copy = current_choice.is_some() || row_is_activity;
+                    if m.item_if(
+                        "copy",
+                        Item::new("Copy").key("Ctrl+C").icon(Icon::Copy),
+                        can_copy,
+                    ) {
+                        copy_rows = true;
+                    }
+                    m.submenu("columns", Item::new("Columns").icon(Icon::Columns), |m| {
+                        for col in PickerColumn::ALL {
+                            if m.check(col.key(), col.label(), extra_cols.contains(&col)) {
+                                toggle_col = Some(col);
+                            }
+                        }
+                    });
+                    if m.item(
+                        "table_font",
+                        Item::new("Table Font and Row...").icon(Icon::TableFont),
+                    ) {
+                        open_table_font = true;
+                    }
+                    m.separator();
+                    m.submenu(
+                        "filter_by",
+                        Item::new("Filter By").icon(Icon::Filter),
+                        |m| {
+                            let choices = [
+                                ("filter_all", "All Activities", PickerFilter::All),
+                                (
+                                    "filter_current_project",
+                                    "Current Project's Activities",
+                                    PickerFilter::CurrentProject,
+                                ),
+                                (
+                                    "filter_not_started",
+                                    "Not Started",
+                                    PickerFilter::NotStarted,
+                                ),
+                                (
+                                    "filter_in_progress",
+                                    "In Progress",
+                                    PickerFilter::InProgress,
+                                ),
+                                ("filter_completed", "Completed", PickerFilter::Completed),
+                                ("filter_critical", "Critical", PickerFilter::Critical),
+                            ];
+                            for (k, label, f) in choices {
+                                if m.check(k, label, filter == f) {
+                                    next_filter = Some(f);
+                                }
+                            }
+                        },
+                    );
+                    m.submenu(
+                        "group_by",
+                        Item::new("Group and Sort By").icon(Icon::GroupSort),
+                        |m| {
+                            let choices = [
+                                ("group_wbs", "WBS", PickerGroup::Wbs),
+                                ("group_list", "List", PickerGroup::List),
+                                ("group_status", "Activity Status", PickerGroup::Status),
+                            ];
+                            for (k, label, g) in choices {
+                                if m.check(k, label, group_mode == g) {
+                                    next_group = Some(g);
+                                }
+                            }
+                        },
+                    );
+                    m.separator();
+                    if m.item_if(
+                        "expand_all",
+                        Item::new("Expand All")
+                            .key("Ctrl+Num +")
+                            .icon(Icon::ExpandAll),
+                        can_expand,
+                    ) {
+                        expand_all = true;
+                    }
+                    if m.item_if(
+                        "collapse_all",
+                        Item::new("Collapse All")
+                            .key("Ctrl+Num -")
+                            .icon(Icon::CollapseAll),
+                        can_collapse,
+                    ) {
+                        collapse_all = true;
                     }
                 },
             );
@@ -1664,11 +1859,67 @@ impl App {
                 }
             });
         });
+        // Keyboard shortcuts for Expand All, Collapse All and Copy while open.
+        if open && !search_focused {
+            let (k_expand, k_collapse, k_copy) = ctx.input(|i| {
+                let cmd = i.modifiers.command && !i.modifiers.alt;
+                (
+                    cmd && (i.key_pressed(Key::Plus) || i.key_pressed(Key::Equals)),
+                    cmd && i.key_pressed(Key::Minus),
+                    cmd && i.key_pressed(Key::C),
+                )
+            });
+            if k_expand && can_expand {
+                expand_all = true;
+            }
+            if k_collapse && can_collapse {
+                collapse_all = true;
+            }
+            if k_copy && choice.is_some() {
+                copy_rows = true;
+            }
+        }
         *selected = choice.map(|k| k as usize);
-        if let Some(key) = fold {
+        if expand_all {
+            self.detail.picker_collapsed.clear();
+        } else if collapse_all {
+            self.detail.picker_collapsed = all_band_keys.into_iter().collect();
+        } else if let Some(key) = fold {
             if !self.detail.picker_collapsed.remove(&key) {
                 self.detail.picker_collapsed.insert(key);
             }
+        }
+        if let Some(f) = next_filter {
+            self.detail.picker_filter = f;
+        }
+        if let Some(g) = next_group {
+            if self.detail.picker_group != g {
+                self.detail.picker_group = g;
+                self.detail.picker_collapsed.clear();
+            }
+        }
+        if let Some(col) = toggle_col {
+            if !self.detail.picker_columns.remove(&col) {
+                self.detail.picker_columns.insert(col);
+            }
+        }
+        if copy_rows {
+            let picked = self.assign_picked(DIALOG, choice);
+            let mut out_lines = Vec::with_capacity(picked.len());
+            for k in picked {
+                if let Some(row_idx) = keys.iter().position(|x| *x == Some(k)) {
+                    if let Some(cells) = texts.get(row_idx) {
+                        out_lines.push(cells.join("\t"));
+                    }
+                }
+            }
+            if !out_lines.is_empty() {
+                ctx.copy_text(out_lines.join("\n"));
+                self.status = "Copied to clipboard".into();
+            }
+        }
+        if open_table_font {
+            self.open_table_font_for(crate::layout_opts::TableTarget::Activities);
         }
         // Assign takes every selected activity; a double click the one.
         let mut picks: Vec<usize> = match clicked {

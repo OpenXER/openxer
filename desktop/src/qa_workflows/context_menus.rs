@@ -99,8 +99,9 @@ const WBS_TABLE: [&str; 23] = [
 const WBS_CHART: [&str; 1] = ["WBS Details"];
 
 /// The Projects table menu of a project row.
-const PROJECTS_TABLE: [&str; 21] = [
+const PROJECTS_TABLE: [&str; 22] = [
     "Open Project",
+    "Close Project",
     "Project Details",
     "Edit Project Details",
     SEP,

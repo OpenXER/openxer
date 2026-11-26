@@ -56,6 +56,11 @@ pub struct Composite {
 
 #[derive(Default)]
 pub struct OpenSet {
+    /// No project is currently open (the user closed or deleted the last open
+    /// project, or restarted an emptied workspace). `App.project` holds an
+    /// unsaved empty placeholder until a project is opened, created or
+    /// imported.
+    pub empty: bool,
     /// Workspace id of the active project (`App.project`).
     pub active: Option<i64>,
     /// Workspace id of the Default Project.
@@ -93,11 +98,70 @@ pub struct OpenSet {
 impl OpenSet {
     /// More than one project is open.
     pub fn multi(&self) -> bool {
-        !self.parked.is_empty()
+        !self.empty && !self.parked.is_empty()
     }
 }
 
+/// An unsaved empty `ProjectData` kept in `App.project` while no project is
+/// open (`OpenSet::empty`). It has no activities and is never written to the
+/// workspace database.
+pub(crate) fn empty_placeholder() -> ProjectData {
+    let mut cal = openxer_xer::calendar_data::CalendarData::default();
+    for day in 1..=5 {
+        cal.week[day] = vec![(8 * 60, 12 * 60), (13 * 60, 17 * 60)];
+    }
+    let cal_text = cal.serialize();
+    let text = format!(
+        "ERMHDR\t25.12\t2026-01-01\tProject\tOpenXER\tOpenXER\tdbxDatabaseNoName\tProject Management\tUSD\n\
+%T\tCALENDAR\n\
+%F\tclndr_id\tdefault_flag\tclndr_name\tclndr_type\tday_hr_cnt\tweek_hr_cnt\tmonth_hr_cnt\tyear_hr_cnt\trsrc_private\tclndr_data\n\
+%R\t1\tY\tStandard\tCA_Base\t8\t40\t172\t2000\tN\t{cal_text}\n\
+%T\tPROJECT\n\
+%F\tproj_id\tproj_short_name\tclndr_id\tplan_start_date\tlast_recalc_date\n\
+%R\t1\t\t1\t2026-01-01 08:00\t2026-01-01 08:00\n\
+%E\n"
+    );
+    let doc = openxer_xer::Document::parse(&text).expect("empty placeholder XER");
+    ProjectData::from_document(doc, 1, String::new()).expect("empty placeholder loads")
+}
+
 impl App {
+    /// True when at least one project is open.
+    pub(crate) fn has_open_project(&self) -> bool {
+        !self.open_set.empty
+    }
+
+    /// Leave the active project open state and enter an empty workspace
+    /// (Projects view, no project open). The caller saves or discards the
+    /// closing project first.
+    pub(crate) fn enter_empty_workspace(&mut self) {
+        self.project = empty_placeholder();
+        self.open_set.empty = true;
+        self.open_set.active = None;
+        self.open_set.default = None;
+        self.open_set.parked.clear();
+        self.open_set.composite = None;
+        self.open_set.undo.clear();
+        self.open_set.redo.clear();
+        self.open_set.steps_seen = 0;
+        self.open_set.version += 1;
+        self.history = history::History::new(&self.project);
+        self.records_revision = 0;
+        self.dirty = false;
+        self.reset_project_ui();
+        self.selected = None;
+        self.query.clear();
+        self.wbs_filter = None;
+        self.collapsed.clear();
+        self.date_edits.clear();
+        self.data_date.clear();
+        self.must_finish.clear();
+        self.saved_projects = self.store.list().unwrap_or_default();
+        self.views.projects.invalidate();
+        self.show_view(views::MainView::Projects);
+        self.store.clear_last();
+        self.save_open_set();
+    }
     /// What the activity table and the Gantt show: every open project.
     pub(crate) fn shown(&self) -> &ProjectData {
         self.open_set
@@ -130,6 +194,9 @@ impl App {
 
     /// The open projects, the active one first (slot order).
     pub(crate) fn open_projects(&self) -> Vec<&ProjectData> {
+        if self.open_set.empty {
+            return vec![];
+        }
         std::iter::once(&self.project)
             .chain(self.open_set.parked.iter().map(|p| &p.project))
             .collect()
@@ -180,6 +247,9 @@ impl App {
 
     /// The workspace id of the active project, saving it first if needed.
     fn ensure_active_id(&mut self) -> Option<i64> {
+        if self.open_set.empty {
+            return None;
+        }
         if self.open_set.active.is_none() {
             self.open_set.active = self.store.id_of(
                 &self.project.source_name,
@@ -483,6 +553,9 @@ impl App {
 
     /// Reopen the projects that were open with the active one last time.
     pub(crate) fn restore_open_set(&mut self) {
+        if self.open_set.empty {
+            return;
+        }
         let Some(active) = self.ensure_active_id() else {
             return;
         };
@@ -501,6 +574,11 @@ impl App {
             .as_array()
             .map(|a| a.iter().filter_map(|v| v.as_i64()).collect())
             .unwrap_or_default();
+        if ids.is_empty() && value["active"].is_null() {
+            self.enter_empty_workspace();
+            self.status = "No project open. Open a project from the Projects view.".into();
+            return;
+        }
         let mut notes = vec![];
         if ids.contains(&active) {
             notes = self.clear_number_clashes(&ids, &[active]);
@@ -606,11 +684,11 @@ impl App {
         }
     }
 
-    /// File > Close Project: close the active project; another open project
-    /// (the default one first) becomes active.
+    /// Close the active project: another open project (the default one first)
+    /// becomes active, or the workspace enters the empty (no open project)
+    /// state on the Projects view.
     pub(crate) fn close_active_project(&mut self) {
-        if self.open_set.parked.is_empty() {
-            self.status = "The last open project stays open".into();
+        if self.open_set.empty {
             return;
         }
         if self.dirty {
@@ -619,6 +697,13 @@ impl App {
                 return;
             }
         }
+        let name = self.project.model.project.name.clone();
+        if self.open_set.parked.is_empty() {
+            self.keep_closing_history();
+            self.enter_empty_workspace();
+            self.status = format!("{name} closed");
+            return;
+        }
         let closing = self.open_set.active;
         let next = self
             .open_set
@@ -626,7 +711,6 @@ impl App {
             .iter()
             .position(|p| Some(p.id) == self.open_set.default)
             .unwrap_or(0);
-        let name = self.project.model.project.name.clone();
         self.activate_parked(next);
         self.open_set.parked.retain(|p| Some(p.id) != closing);
         if self.open_set.default == closing || self.open_set.default.is_none() {

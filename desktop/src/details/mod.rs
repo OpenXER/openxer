@@ -269,14 +269,91 @@ pub struct Customize {
 /// Step fields copied with the Steps context menu.
 pub use openxer_xer::edit::steps::StepCopy;
 
+/// Filter applied inside Assign Predecessors / Successors.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PickerFilter {
+    #[default]
+    All,
+    CurrentProject,
+    NotStarted,
+    InProgress,
+    Completed,
+    Critical,
+}
+
+/// Grouping mode inside Assign Predecessors / Successors.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PickerGroup {
+    /// Follow the activity table's WBS/band layout (default).
+    #[default]
+    Wbs,
+    /// Flat activity list with no grouping bands.
+    List,
+    /// Grouped by Activity Status.
+    Status,
+}
+
+/// Optional extra columns toggled from the Assign Predecessors / Successors
+/// right-click Columns submenu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PickerColumn {
+    Status,
+    OriginalDuration,
+    Start,
+    Finish,
+    TotalFloat,
+}
+
+impl PickerColumn {
+    pub const ALL: [Self; 5] = [
+        Self::Status,
+        Self::OriginalDuration,
+        Self::Start,
+        Self::Finish,
+        Self::TotalFloat,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Status => "col_status",
+            Self::OriginalDuration => "col_orig_dur",
+            Self::Start => "col_start",
+            Self::Finish => "col_finish",
+            Self::TotalFloat => "col_total_float",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Status => "Activity Status",
+            Self::OriginalDuration => "Original Duration",
+            Self::Start => "Start",
+            Self::Finish => "Finish",
+            Self::TotalFloat => "Total Float",
+        }
+    }
+
+    pub fn width(self) -> f32 {
+        match self {
+            Self::Status => 85.,
+            Self::OriginalDuration => 78.,
+            Self::Start => 84.,
+            Self::Finish => 84.,
+            Self::TotalFloat => 72.,
+        }
+    }
+}
+
 /// What the relationship picker's lines depend on: the search text, the
-/// project's undo snapshot, the table's Group and Sort, and the activities
-/// that take the relationship.
+/// project's undo snapshot, the table's Group and Sort, the picker's own
+/// filter/grouping, and the activities that take the relationship.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PickerLinesKey {
     pub query: String,
     pub serial: u64,
     pub group_sort: crate::grid::layout::GroupSort,
+    pub filter: PickerFilter,
+    pub group: PickerGroup,
     pub targets: Vec<usize>,
     pub collapsed: BTreeSet<String>,
 }
@@ -289,11 +366,21 @@ pub struct DetailState {
     pub rows: [Option<usize>; 2],
     context: Option<(i64, DetailTab)>,
     pub picker: Option<Picker>,
-    /// Assign Predecessors / Successors: the lines of the last build and
-    /// what they were built for (see `relationship_picker`).
-    pub picker_lines: Option<(PickerLinesKey, std::rc::Rc<Vec<crate::grid::PickLine>>)>,
+    /// Assign Predecessors / Successors: the lines of the last build, all
+    /// band keys (for Collapse All), and what they were built for.
+    pub picker_lines: Option<(
+        PickerLinesKey,
+        std::rc::Rc<Vec<crate::grid::PickLine>>,
+        Vec<String>,
+    )>,
     /// Bands folded shut in Assign Predecessors / Successors (band keys).
     pub picker_collapsed: BTreeSet<String>,
+    /// Filter By choice in Assign Predecessors / Successors.
+    pub picker_filter: PickerFilter,
+    /// Group and Sort By choice in Assign Predecessors / Successors.
+    pub picker_group: PickerGroup,
+    /// Optional extra columns shown in Assign Predecessors / Successors.
+    pub picker_columns: BTreeSet<PickerColumn>,
     /// The Activity Codes dictionary was opened from Assign: when it closes
     /// with code values to assign, the code picker opens.
     pub assign_codes_after: bool,
@@ -356,6 +443,9 @@ impl Default for DetailState {
             picker: None,
             picker_lines: None,
             picker_collapsed: BTreeSet::new(),
+            picker_filter: PickerFilter::All,
+            picker_group: PickerGroup::Wbs,
+            picker_columns: BTreeSet::new(),
             assign_codes_after: false,
             assign: None,
             assign_for: None,

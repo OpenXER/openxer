@@ -231,7 +231,7 @@ fn the_sample_is_a_mid_size_job() {
     let s = sample();
     let m = &s.current.model;
     assert!(
-        (150..=250).contains(&m.activities.len()),
+        (350..=450).contains(&m.activities.len()),
         "{}",
         m.activities.len()
     );
@@ -265,8 +265,11 @@ fn every_task_is_labor_and_cost_loaded() {
             .iter()
             .filter(|r| num(t.value(r, "task_id")) == a.task_id)
             .collect();
-        if a.task_type != TaskType::Task {
-            assert!(mine.is_empty(), "{} is a milestone", a.task_code);
+        if matches!(
+            a.task_type,
+            TaskType::Mile | TaskType::FinMile | TaskType::Wbs
+        ) {
+            assert!(mine.is_empty(), "{} has no assignments", a.task_code);
             continue;
         }
         assert!(
@@ -284,18 +287,26 @@ fn every_task_is_labor_and_cost_loaded() {
 
 #[test]
 fn only_the_start_and_finish_are_open_ends() {
-    for p in [&sample().plan, &sample().current] {
+    for p in [&sample().plan, &sample().revision, &sample().current] {
         let m = &p.model;
         let starts: Vec<&str> = m
             .activities
             .iter()
-            .filter(|a| a.preds.is_empty())
+            .filter(|a| !matches!(a.task_type, TaskType::Loe | TaskType::Wbs) && a.preds.is_empty())
             .map(|a| a.task_code.as_str())
             .collect();
         let finishes: Vec<&str> = m
             .activities
             .iter()
-            .filter(|a| a.succs.is_empty())
+            .filter(|a| {
+                !matches!(a.task_type, TaskType::Loe | TaskType::Wbs)
+                    && a.succs.iter().all(|&l| {
+                        matches!(
+                            m.activities[m.links[l].succ].task_type,
+                            TaskType::Loe | TaskType::Wbs
+                        )
+                    })
+            })
             .map(|a| a.task_code.as_str())
             .collect();
         assert_eq!((starts, finishes), (vec!["MS0000"], vec!["PM0920"]));
@@ -389,7 +400,7 @@ fn budgets_add_up() {
             }
         }
         let budget: f64 = rows.iter().map(|r| float(t.value(r, "target_cost"))).sum();
-        assert!((2_000_000. ..3_000_000.).contains(&budget), "{budget}");
+        assert!((4_000_000. ..6_000_000.).contains(&budget), "{budget}");
     }
     // The plan carries no actuals; the budget is the same in both.
     let total = |p: &ProjectData, column: &str| -> f64 {
@@ -540,8 +551,58 @@ fn the_sample_has_codes_fields_steps_expenses_curves_and_notes() {
     ] {
         assert!(topics.contains(&topic), "{topics:?}");
     }
-    assert!(count("TASKMEMO") >= 12);
-    assert!(count("WBSMEMO") >= 6);
+    assert!(count("TASKMEMO") >= 20);
+    assert!(count("WBSMEMO") >= 12);
+    // Rich enterprise and project registers are all populated.
+    assert!(count("OBS") >= 5);
+    assert!(count("ROLERATE") >= 4);
+    assert!(count("BASETYPE") >= 3);
+    assert!(count("PCATTYPE") >= 4);
+    assert!(count("PROJPCAT") >= 4);
+    assert!(count("FUNDSRC") >= 3);
+    assert!(count("PROJFUND") >= 3);
+    assert!(count("RCATTYPE") >= 2);
+    assert!(count("RSRCRCAT") >= 20);
+    assert!(count("ASGNMNTCATTYPE") >= 3);
+    assert!(count("ASGNMNTACAT") >= 100);
+    assert!(count("WBSSTEP") >= 15);
+    assert!(count("BUDGCHNG") >= 6);
+    assert!(count("WBSBUDG") >= 10);
+    assert!(count("DOCCATG") >= 5);
+    assert!(count("DOCSTAT") >= 4);
+    assert!(count("DOCUMENT") >= 18);
+    assert!(count("TASKDOC") >= 25);
+    assert!(count("RISKTYPE") >= 5);
+    assert!(count("PROJRISK") >= 10);
+    assert!(count("TASKRISK") >= 20);
+    assert!(count("THRSPARM") >= 14);
+    assert!(count("PROJTHRS") >= 5);
+    assert!(count("PROJISSU") >= 6);
+    assert!(count("ISSUHIST") >= 6);
+    assert!(count("FINTMPL") >= 1);
+    assert!(count("FINDATES") >= 12);
+    assert!(count("TASKFIN") >= 40);
+    assert!(count("TRSRCFIN") >= 80);
+    assert!(p
+        .model
+        .activities
+        .iter()
+        .any(|a| a.task_type == TaskType::Loe));
+    assert!(p
+        .model
+        .activities
+        .iter()
+        .any(|a| a.task_type == TaskType::Wbs));
+    // Hierarchical resources: parent folders exist and children point to them.
+    let (rt, rrows) = table_rows(p, "RSRC");
+    assert!(rrows
+        .iter()
+        .any(|r| !rt.value(r, "parent_rsrc_id").is_empty()));
+    // Second baseline (mid-project rebaseline) sits between plan and current.
+    let rev_dd = sample().revision.model.project.data_date.unwrap();
+    let plan_dd = sample().plan.model.project.data_date.unwrap();
+    let cur_dd = p.model.project.data_date.unwrap();
+    assert!(plan_dd < rev_dd && rev_dd < cur_dd);
     // Codes are the project's own, calendars and resources are named for it.
     let (t, rows) = table_rows(p, "ACTVTYPE");
     assert!(rows
@@ -694,4 +755,61 @@ fn the_s_curve_and_earned_hours_reports_run_on_the_sample() {
     );
     assert!(hours.rows.iter().any(|r| r.key == "ENGR" && r.earned > 0.));
     assert!(hours.rows.iter().all(|r| r.budgeted > 0.));
+}
+
+#[test]
+fn the_sample_passes_schedule_check() {
+    use crate::schedule_check::{run_checks_with, CheckParams, Item};
+    let s = sample();
+    let (plan, current) = (&s.plan, &s.current);
+    let shift = (plan.model.origin_serial - current.model.origin_serial) * 1440;
+    let baseline: Vec<Option<i64>> = current
+        .model
+        .activities
+        .iter()
+        .map(|a| {
+            plan.model
+                .activities
+                .iter()
+                .find(|b| b.task_id == a.task_id)
+                .and_then(|b| b.early_finish)
+                .map(|f| f + shift)
+        })
+        .collect();
+    let t = current.document.table("PROJCOST").unwrap();
+    let with_expenses = t
+        .rows
+        .iter()
+        .map(|r| t.value(r, "task_id").parse().unwrap())
+        .collect();
+    let results = run_checks_with(
+        &current.model,
+        &CheckParams::default(),
+        &with_expenses,
+        Some(&baseline),
+    );
+    let failed: Vec<String> = results
+        .iter()
+        .filter(|r| r.passed == Some(false))
+        .map(|r| {
+            let codes: Vec<String> = r
+                .items
+                .iter()
+                .filter_map(|item| match item {
+                    Item::Activity(i) => {
+                        let a = &current.model.activities[*i];
+                        Some(format!(
+                            "{}(tf={}d)",
+                            a.task_code,
+                            a.total_float.unwrap_or(0) / 480
+                        ))
+                    }
+                    _ => None,
+                })
+                .collect();
+            format!("{} {:?} {:?}", r.check.name(), r.value, codes)
+        })
+        .collect();
+    assert!(failed.is_empty(), "{failed:?}");
+    assert!(results.iter().filter(|r| r.passed == Some(true)).count() >= 13);
 }

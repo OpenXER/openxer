@@ -207,9 +207,14 @@ fn projects_view_copy_paste_add_and_delete_undo_and_redo() {
     d.app.history_move(&ctx, false);
     assert_eq!(rows(&d).len(), start + 2);
     assert_eq!(d.app.store.load(copy).unwrap().model.project.name, title);
-    // The open project is refused.
+    // Deleting the open project closes it first and enters the empty workspace;
+    // Undo brings it back.
     let open = d.app.workspace_row().unwrap();
-    assert!(d.app.delete_workspace_project(open, 9.).is_err());
+    d.app.delete_workspace_project(open, 9.).unwrap();
+    assert!(d.app.open_set.empty);
+    assert_eq!(rows(&d).len(), start + 1);
+    d.app.history_move(&ctx, false);
+    assert_eq!(rows(&d).len(), start + 2);
 }
 
 #[test]

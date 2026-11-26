@@ -485,6 +485,7 @@ fn main() -> eframe::Result<()> {
         lock,
         store,
         project,
+        empty,
         pending,
         replace_prompt,
         error: initial_error,
@@ -493,11 +494,15 @@ fn main() -> eframe::Result<()> {
         std::process::exit(1)
     };
     chrome::preload_fonts();
-    let initial_title = format!(
-        "OpenXER : {} ({})",
-        project.model.project.name,
-        views::project_title(&project)
-    );
+    let initial_title = if empty {
+        "OpenXER".to_string()
+    } else {
+        format!(
+            "OpenXER : {} ({})",
+            project.model.project.name,
+            views::project_title(&project)
+        )
+    };
     let saved_place = window_place::load(&store);
     window_place::seed(saved_place);
     // On Windows, winit 0.30 calls ShowWindow(SW_MAXIMIZE) -> ShowWindow(SW_HIDE)
@@ -521,8 +526,15 @@ fn main() -> eframe::Result<()> {
             let cloak = window_place::StartupCloak::engage(defer_maximize);
             let mut app = App::new(&cc.egui_ctx, store, project);
             app.startup_cloak = cloak;
-            app.adopt_file_baselines();
-            app.restore_open_set();
+            if empty {
+                app.enter_empty_workspace();
+                app.status =
+                    "No project open. Use File > New... or File > Import... to add a project."
+                        .into();
+            } else {
+                app.adopt_file_baselines();
+                app.restore_open_set();
+            }
             #[cfg(debug_assertions)]
             {
                 app.capture_dir = args
@@ -566,6 +578,9 @@ struct Startup {
     lock: store::WorkspaceLock,
     store: Store,
     project: ProjectData,
+    /// The workspace has no project to open (its projects were deleted); start
+    /// in the empty-workspace state on the Projects view.
+    empty: bool,
     pending: Option<(Document, String)>,
     /// A project read from a file the workspace already has a copy of (the
     /// copy's workspace id), waiting for the user to choose.
@@ -622,22 +637,28 @@ fn launch(args: &[std::ffi::OsString], fatal: impl FnOnce(&str)) -> Option<Start
     let mut initial_error = None;
     let mut pending = None;
     let mut replace_prompt = None;
-    // The as-planned copy of the sample, while the window starts on a fresh
-    // sample (it becomes its baseline once the sample is stored).
+    // The as-planned and mid-project rebaseline copies of the sample, while
+    // the window starts on a fresh sample (stored as its two baselines).
     let mut fresh_sample = None;
+    let mut empty = false;
     let mut project = match store.last() {
         Ok(Some(saved)) => saved,
+        Ok(None) if file.is_none() && first_run::was_seeded(&store) => {
+            empty = true;
+            open_set::empty_placeholder()
+        }
         Ok(None) => {
-            let (current, plan) = fallback_sample(&store);
-            fresh_sample = Some(plan);
+            first_run::mark_seeded(&store);
+            let (current, plan, revision) = fallback_sample(&store);
+            fresh_sample = Some((plan, revision));
             current
         }
         Err(error) => {
             initial_error = Some(format!(
                 "The project open when OpenXER last closed could not be opened, so the sample project is shown instead. That project is still in the workspace: {error}"
             ));
-            let (current, plan) = fallback_sample(&store);
-            fresh_sample = Some(plan);
+            let (current, plan, revision) = fallback_sample(&store);
+            fresh_sample = Some((plan, revision));
             current
         }
     };
@@ -665,6 +686,7 @@ fn launch(args: &[std::ffi::OsString], fatal: impl FnOnce(&str)) -> Option<Start
                                 store.forget_mark(&key);
                                 project = imported;
                                 fresh_sample = None;
+                                empty = false;
                             }
                         }
                         Err(error) => initial_error = Some(error),
@@ -678,47 +700,52 @@ fn launch(args: &[std::ffi::OsString], fatal: impl FnOnce(&str)) -> Option<Start
             Err(error) => initial_error = Some(error),
         }
     }
-    if project
-        .model
-        .activities
-        .iter()
-        .all(|a| a.early_start.is_none())
-    {
-        if let Err(error) = schedule_model(&mut project.model, &project.resources) {
-            initial_error = Some(error);
-        }
-    }
-    // The dictionary before the sample joins it: what the sample adds is
-    // the sample's own, and goes when the sample is removed.
-    let dictionary_before = fresh_sample
-        .as_ref()
-        .and_then(|_| store.dictionary().ok().map(|(d, _)| d));
-    // The project starts as the workspace stores it; a failed save is shown
-    // when the window opens rather than lost.
-    match store.save_stored(&project) {
-        Ok((_, Some(doc))) => {
-            if let Err(error) = store::adopt_document(&mut project, doc) {
-                note(&mut initial_error, error);
+    if !empty {
+        if project
+            .model
+            .activities
+            .iter()
+            .all(|a| a.early_start.is_none())
+        {
+            if let Err(error) = schedule_model(&mut project.model, &project.resources) {
+                initial_error = Some(error);
             }
         }
-        Ok(_) => {}
-        Err(error) => note(
-            &mut initial_error,
-            format!("The project could not be saved to the workspace: {error}"),
-        ),
-    }
-    if let (Some(plan), Some(before)) = (fresh_sample, dictionary_before) {
-        if let Err(error) = first_run::install_sample(&mut store, &mut project, &plan, &before) {
-            note(
+        // The dictionary before the sample joins it: what the sample adds is
+        // the sample's own, and goes when the sample is removed.
+        let dictionary_before = fresh_sample
+            .as_ref()
+            .and_then(|_| store.dictionary().ok().map(|(d, _)| d));
+        // The project starts as the workspace stores it; a failed save is shown
+        // when the window opens rather than lost.
+        match store.save_stored(&project) {
+            Ok((_, Some(doc))) => {
+                if let Err(error) = store::adopt_document(&mut project, doc) {
+                    note(&mut initial_error, error);
+                }
+            }
+            Ok(_) => {}
+            Err(error) => note(
                 &mut initial_error,
-                format!("The sample project's baseline could not be stored: {error}"),
-            );
+                format!("The project could not be saved to the workspace: {error}"),
+            ),
+        }
+        if let (Some((plan, revision)), Some(before)) = (fresh_sample, dictionary_before) {
+            if let Err(error) =
+                first_run::install_sample(&mut store, &mut project, &plan, &revision, &before)
+            {
+                note(
+                    &mut initial_error,
+                    format!("The sample project's baselines could not be stored: {error}"),
+                );
+            }
         }
     }
     Some(Startup {
         lock,
         store,
         project,
+        empty,
         pending,
         replace_prompt,
         error: initial_error,
@@ -730,7 +757,7 @@ fn launch(args: &[std::ffi::OsString], fatal: impl FnOnce(&str)) -> Option<Start
 /// under the sample's name and key (a schedule built in the sample, which
 /// may have failed to load), the sample gets a name of its own, so saving it
 /// can never replace that project.
-fn fallback_sample(store: &Store) -> (ProjectData, ProjectData) {
+fn fallback_sample(store: &Store) -> (ProjectData, ProjectData, ProjectData) {
     let sample = openxer_xer::sample_project::sample_project();
     let mut p = sample.current;
     let key = p.model.project.proj_id;
@@ -748,7 +775,7 @@ fn fallback_sample(store: &Store) -> (ProjectData, ProjectData) {
         }
         p.source_name = name;
     }
-    (p, sample.plan)
+    (p, sample.plan, sample.revision)
 }
 
 #[cfg(test)]

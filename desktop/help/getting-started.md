@@ -5,11 +5,16 @@ make a change, schedule, and send the file back out.
 
 ## The sample project
 A new workspace opens on **RIVERBEND**, a made-up process water upgrade in
-progress: about 190 activities with logic, three calendars, crews and
-equipment with rates, costs, expenses, codes, notebook topics and an
-as-planned baseline. Use it to try the views. To remove it, and the
-calendars, resources, codes and notebook topics only it uses, delete it in
-the Projects view once another project is open. See [Projects](view-projects).
+progress: about 365 activities across six plant areas with logic, Level of
+Effort and WBS summary activities, three calendars, hierarchical crews and
+equipment with rates and curves, costs, expenses, activity/project/resource/assignment
+codes, risks, documents, issues, thresholds, WBS milestones, funding, budget log,
+spending plan, financial periods, notebook topics and two baselines (as-planned
+and mid-August rebaseline). Use it to try every view. To remove it - along with
+the calendars, resources, codes, topics and other shared rows only it uses -
+right-click **RIVERBEND** in the Projects view and choose **Delete**. Deleting
+the last project leaves an empty workspace ready for your own schedule. See
+[Projects](view-projects).
 
 ## Bring a project in
 1. To start from an XER file, use `File > Import...`. The wizard reads the file

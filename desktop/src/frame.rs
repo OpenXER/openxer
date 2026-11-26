@@ -67,11 +67,15 @@ impl App {
     }
     /// `OpenXER : <project ID> (<project name>)`, sent only when it changes.
     fn window_title(&mut self, ctx: &egui::Context) {
-        let title = format!(
-            "OpenXER : {} ({})",
-            self.project.model.project.name,
-            views::project_title(&self.project)
-        );
+        let title = if self.open_set.empty {
+            "OpenXER".to_string()
+        } else {
+            format!(
+                "OpenXER : {} ({})",
+                self.project.model.project.name,
+                views::project_title(&self.project)
+            )
+        };
         let key = egui::Id::new("openxer_window_title");
         if ctx.data(|d| d.get_temp::<String>(key)).as_ref() != Some(&title) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
@@ -368,10 +372,6 @@ impl App {
 
     /// Texts of the fixed status panels, in order.
     pub(super) fn status_panels(&self) -> Vec<String> {
-        let data_date = format::date(
-            self.project.model.origin_serial,
-            self.project.model.project.data_date,
-        );
         let user = std::env::var("USERNAME")
             .or_else(|_| std::env::var("USER"))
             .unwrap_or_else(|_| "local".into());
@@ -381,6 +381,17 @@ impl App {
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| "workspace".into());
+        if self.open_set.empty {
+            return vec![
+                "No project open".into(),
+                format!("User: {user}"),
+                format!("Workspace: {db}"),
+            ];
+        }
+        let data_date = format::date(
+            self.project.model.origin_serial,
+            self.project.model.project.data_date,
+        );
         let mut panels = vec![
             format!("Data Date: {data_date}"),
             format!("Baseline: {}", self.baseline_label()),

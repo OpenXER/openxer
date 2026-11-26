@@ -104,6 +104,7 @@ fn the_projects_menu_lists_its_items_in_order_and_selects_the_row() {
     );
     let order = [
         "projects_menu_open_project",
+        "projects_menu_close_project",
         "projects_menu_details",
         "projects_menu_edit_details",
         "projects_menu_cut",
@@ -225,6 +226,7 @@ fn the_projects_menu_opens_a_project_and_serves_the_empty_area() {
     assert!(d.has("projects_menu_add"), "the empty area has a menu");
     for key in [
         "projects_menu_open_project",
+        "projects_menu_close_project",
         "projects_menu_cut",
         "projects_menu_copy",
         "projects_menu_delete",
@@ -234,6 +236,113 @@ fn the_projects_menu_opens_a_project_and_serves_the_empty_area() {
             "{key} needs a project"
         );
     }
+}
+
+#[test]
+fn projects_menu_closes_and_deletes_an_open_project_into_empty_workspace() {
+    let mut d = Driver::new("vm-projects-close-del", starter());
+    open_projects(&mut d);
+    // Close Project from right-click menu closes the last open project.
+    right_click_project_row(&mut d);
+    assert!(closes_on_click(
+        &mut d,
+        "projects_menu_add",
+        "projects_menu_close_project"
+    ));
+    d.frames(2);
+    assert!(
+        d.app.open_set.empty,
+        "closing the last project enters empty workspace"
+    );
+    assert!(d.app.open_ids().is_empty());
+    // Reopen it, then right-click Delete directly while open.
+    right_click_project_row(&mut d);
+    assert!(closes_on_click(
+        &mut d,
+        "projects_menu_add",
+        "projects_menu_open_project"
+    ));
+    d.frames(2);
+    assert!(!d.app.open_set.empty);
+    open_projects(&mut d);
+    right_click_project_row(&mut d);
+    assert!(closes_on_click(
+        &mut d,
+        "projects_menu_add",
+        "projects_menu_delete"
+    ));
+    d.frames(2);
+    assert!(
+        d.app.views.projects.delete.as_ref().is_some_and(|c| c.open),
+        "Delete opens confirmation noting the project is open"
+    );
+    d.click("delete_project_yes");
+    d.frames(2);
+    assert!(
+        d.app.open_set.empty,
+        "deleting the last project enters empty workspace"
+    );
+    assert!(d.app.store.list().unwrap().is_empty());
+}
+
+#[test]
+fn assign_predecessors_right_click_menu_expands_and_collapses_wbs() {
+    let mut d = Driver::new("vm-picker-menu", starter());
+    d.frames(2);
+    d.app.selected = Some(0);
+    d.app.detail.picker = Some(crate::details::Picker::Relationship {
+        predecessor: true,
+        query: String::new(),
+        selected: None,
+        kind: openxer_engine::model::LinkType::FS,
+        lag: 0.,
+    });
+    d.frames(2);
+    assert!(d.app.detail.picker.is_some());
+    let search = d.rect("picker_search");
+    let list_pos = Pos2::new(search.left() + 40., search.bottom() + 45.);
+    right_click(&mut d, list_pos);
+    let order = [
+        "picker_menu_copy",
+        "picker_menu_columns",
+        "picker_menu_table_font",
+        "picker_menu_filter_by",
+        "picker_menu_group_by",
+        "picker_menu_expand_all",
+        "picker_menu_collapse_all",
+    ];
+    for key in order {
+        assert!(d.has(key), "{key} is listed");
+    }
+    assert_order(&d, &order);
+    // Nothing is collapsed yet: Expand All is disabled, Collapse All is enabled.
+    assert!(!closes_on_click(
+        &mut d,
+        "picker_menu_collapse_all",
+        "picker_menu_expand_all"
+    ));
+    assert!(closes_on_click(
+        &mut d,
+        "picker_menu_table_font",
+        "picker_menu_collapse_all"
+    ));
+    d.frames(2);
+    assert!(
+        !d.app.detail.picker_collapsed.is_empty(),
+        "Collapse All folds every WBS band"
+    );
+    // Now Expand All is enabled and clears the collapsed set.
+    right_click(&mut d, list_pos);
+    assert!(closes_on_click(
+        &mut d,
+        "picker_menu_table_font",
+        "picker_menu_expand_all"
+    ));
+    d.frames(2);
+    assert!(
+        d.app.detail.picker_collapsed.is_empty(),
+        "Expand All unfolds every WBS band"
+    );
 }
 
 // ------------------------------------------------------------- resources

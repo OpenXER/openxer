@@ -476,7 +476,12 @@ fn whats_new_shows_the_changelog_newest_release_first() {
             _ => None,
         })
         .collect();
-    assert_eq!(headings.first(), Some(&"Unreleased"), "{headings:?}");
+    assert!(
+        headings
+            .first()
+            .is_some_and(|h| *h == "Unreleased" || h.starts_with(env!("CARGO_PKG_VERSION"))),
+        "{headings:?}"
+    );
     let bullets = t
         .blocks
         .iter()

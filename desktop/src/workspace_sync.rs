@@ -80,7 +80,7 @@ impl App {
     /// them, and bring the other open projects up to the dictionary when it
     /// changed.
     pub(crate) fn sync_dictionary(&mut self, time: f64) {
-        if !self.dictionary_shared() {
+        if self.open_set.empty || !self.dictionary_shared() {
             return;
         }
         let key = key_of(&self.project);

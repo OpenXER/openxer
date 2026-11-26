@@ -4,7 +4,17 @@ All notable changes to OpenXER are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/). The newest release is at the top.
 
-## [Unreleased]
+## [0.1.1] - 2026-11-25
+
+### Added
+- **Close Project** in the Projects view right-click menu, plus a true empty-workspace state when the last open project is closed or deleted.
+- Full right-click context menu in **Assign Predecessors** and **Assign Successors**: Copy (`Ctrl+C`), Columns, Table Font and Row, Filter By, Group and Sort By, Expand All (`Ctrl+Num +`), and Collapse All (`Ctrl+Num -`).
+- Expanded the default `RIVERBEND` sample project to 365 activities across six plant areas with a second baseline (Mid-August Rebaseline), Risks, Work Products & Documents, Issues, Thresholds, LOE and WBS Summary activities, WBS Milestones, OBS, Project/Resource/Assignment Codes, Funding, Budget Log, Spending Plan, Financial Periods with past period actuals, and typed UDFs.
+
+### Fixed
+- Enabled **Delete** directly on open projects (including the default `RIVERBEND` sample project) in the Projects view, saving and closing before deletion and keeping the workspace empty on restart instead of re-seeding the sample.
+
+## [0.1.0] - 2026-11-25
 
 The first public release.
 

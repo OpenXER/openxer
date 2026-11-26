@@ -11,6 +11,23 @@
 use super::*;
 
 const NOTED_KEY: &str = "first_run_noted";
+/// Set once the workspace has been initialized (seeded with the sample or had
+/// a project deleted), so emptying the workspace does not re-seed the sample
+/// on the next start.
+pub(crate) const WORKSPACE_SEEDED_KEY: &str = "workspace_seeded";
+
+pub(crate) fn mark_seeded(store: &Store) {
+    let _ = store.set_preference(WORKSPACE_SEEDED_KEY, "1");
+}
+
+pub(crate) fn was_seeded(store: &Store) -> bool {
+    store
+        .preference(WORKSPACE_SEEDED_KEY)
+        .ok()
+        .flatten()
+        .is_some()
+        || store.preference(NOTED_KEY).ok().flatten().is_some()
+}
 /// The status message of the first start. It stays short enough to fit in
 /// the status bar's message panel beside the AI agents hint on a 1366 px
 /// wide window (`ai_agents::tests::hint_fits_beside_the_first_run_note`):
@@ -21,26 +38,42 @@ const NOTED_KEY: &str = "first_run_noted";
 pub(crate) const SAMPLE_NOTE: &str =
     "RIVERBEND is a sample project. Use File > Import... or drop an XER file.";
 
-/// Store the first-run sample's as-planned copy `plan` as its baseline and
-/// note which dictionary rows are the sample's: those the workspace
-/// dictionary has now and had not `before` the sample was stored.
+/// Store the first-run sample's as-planned copy `plan` (Project and Primary
+/// baseline) and mid-project copy `revision` (Secondary baseline), and note
+/// which dictionary rows are the sample's: those the workspace dictionary has
+/// now and had not `before` the sample was stored.
 pub(crate) fn install_sample(
     store: &mut Store,
     project: &mut ProjectData,
     plan: &ProjectData,
+    revision: &ProjectData,
     before: &openxer_xer::Document,
 ) -> Result<(), String> {
     let row = store
         .id_of(&project.source_name, project.model.project.proj_id)
         .ok_or("the sample is not in the workspace")?;
     let start = openxer_xer::date_string(plan.model.origin_serial, plan.model.project.plan_start);
-    crate::baselines::add_plan_baseline(
+    let primary = crate::baselines::add_plan_baseline(
         store.connection(),
         row,
         project,
         &plan.updated_document(),
         "As planned at notice to proceed",
         &start,
+    )?;
+    let rev_date = openxer_xer::date_string(
+        revision.model.origin_serial,
+        revision.model.project.data_date,
+    );
+    crate::baselines::add_secondary_baseline(
+        store.connection(),
+        row,
+        project,
+        primary,
+        &revision.updated_document(),
+        "Mid-August Rebaseline (Aug 2026)",
+        "2",
+        &rev_date,
     )?;
     if store.shared()? {
         openxer_automation::workspace_db::record_sample(store.connection(), row, before)?;
@@ -73,6 +106,9 @@ impl App {
     /// The sample is the only project in a workspace that has not shown the
     /// note yet: say what it is, once.
     fn note_first_run(&mut self) {
+        if !self.has_open_project() {
+            return;
+        }
         if self.store.preference(NOTED_KEY).ok().flatten().is_some() {
             return;
         }

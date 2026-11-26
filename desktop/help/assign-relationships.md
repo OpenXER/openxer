@@ -4,7 +4,7 @@ Picks activities to link to the selected activity. A predecessor is an activity 
 
 ## What is on it
 - **Find**: type part of an activity ID or name to shorten the list.
-- **The activity list**: **Activity ID** and **Activity Name** of every other activity. With several projects open it also shows **Project ID** and lists the activities of every open project.
+- **The activity list**: **Activity ID** and **Activity Name** of every other activity, grouped under WBS bands. With several projects open it also shows **Project ID** and lists the activities of every open project. Right-click the list for **Copy** (`Ctrl+C`), **Columns**, **Table Font and Row...**, **Filter By**, **Group and Sort By**, **Expand All** (`Ctrl+Num +`) and **Collapse All** (`Ctrl+Num -`).
 - **Relationship Type**: **FS** (finish to start, the usual type), **SS** (start to start), **FF** (finish to finish) or **SF** (start to finish). New links start as FS.
 - **Lag**: a wait added to the link, typed like a duration. It starts at 0.
 - **Assign**: adds a relationship to each activity selected in the list. Click one activity, `Ctrl`+click to add or drop more, or `Shift`+click to select a run of them.

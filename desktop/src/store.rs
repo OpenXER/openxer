@@ -784,6 +784,11 @@ impl Store {
         project.model.options.do_level = level;
         Ok(project)
     }
+    pub fn clear_last(&self) {
+        let _ = self
+            .connection
+            .execute("DELETE FROM preferences WHERE key='last_project'", []);
+    }
     pub fn last(&self) -> Result<Option<ProjectData>, String> {
         let id: Option<String> = self
             .connection
@@ -794,8 +799,20 @@ impl Store {
             )
             .optional()
             .map_err(|e| e.to_string())?;
-        id.map(|s| self.load(s.parse().map_err(|_| "Invalid saved project ID")?))
-            .transpose()
+        let Some(s) = id else {
+            return Ok(None);
+        };
+        let row_id: i64 = s.parse().map_err(|_| "Invalid saved project ID")?;
+        let exists: Option<i64> = self
+            .connection
+            .query_row("SELECT 1 FROM projects WHERE id=?1", [row_id], |r| r.get(0))
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if exists.is_none() {
+            self.clear_last();
+            return Ok(None);
+        }
+        self.load(row_id).map(Some)
     }
 }
 /// One running app's hold on a workspace, so a second app on the same

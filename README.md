@@ -303,11 +303,13 @@ Some tests compare against real schedules that cannot be published. They read th
 
 ## Contributing and roadmap
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [ROADMAP.md](ROADMAP.md). AI coding agents should read [AGENTS.md](AGENTS.md) first.
+See [CONTRIBUTING.md](CONTRIBUTING.md), [ROADMAP.md](ROADMAP.md) and [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md). AI coding agents should read [AGENTS.md](AGENTS.md) first.
 
 ## About
 
 OpenXER is an independent project. It is not affiliated with, endorsed by or sponsored by any scheduling software vendor. XER is a schedule interchange file format; product and company names belong to their owners.
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/) (see [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md)).
 
 ## License
 

@@ -16,6 +16,8 @@ jobs:
   build-windows:
     name: Build Windows installer and portable zip
     runs-on: windows-latest
+    env:
+      SIGNPATH_ENABLED: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -29,15 +31,60 @@ jobs:
           if (-not $iscc -and -not (Test-Path 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe')) {
             choco install innosetup -y --no-progress
           }
-      - name: Build packaged executables and Setup installer
+      - name: Read workspace version
         shell: pwsh
         run: |
           $ver = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
           echo "VERSION=$ver" >> $env:GITHUB_ENV
-          python desktop/build_release.py --output dist/OpenXER.exe --installer --installer-output release-assets
+      - name: Build packaged Windows executables
+        shell: pwsh
+        run: |
+          python desktop/build_release.py --output dist/OpenXER.exe
+      - name: Upload unsigned executables for SignPath
+        if: env.SIGNPATH_ENABLED == 'true'
+        id: upload-unsigned-exes
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-windows-exes
+          path: |
+            dist/OpenXER.exe
+            dist/openxer-cli.exe
+      - name: Sign Windows executables with SignPath
+        if: env.SIGNPATH_ENABLED == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORG_ID }}
+          project-slug: 'openxer'
+          signing-policy-slug: 'release-signing'
+          github-artifact-id: ${{ steps.upload-unsigned-exes.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: 'dist'
+      - name: Build portable zip and Inno Setup installer
+        shell: pwsh
+        run: |
           New-Item -ItemType Directory -Force -Path release-assets | Out-Null
-          Compress-Archive -Path dist/* -DestinationPath "release-assets/OpenXER-$ver-windows-x64.zip" -Force
+          python desktop/build_release.py --package-only --output dist/OpenXER.exe --installer --installer-output release-assets
+          Compress-Archive -Path dist/* -DestinationPath "release-assets/OpenXER-$env:VERSION-windows-x64.zip" -Force
           Get-ChildItem release-assets
+      - name: Upload unsigned installer for SignPath
+        if: env.SIGNPATH_ENABLED == 'true'
+        id: upload-unsigned-installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-windows-installer
+          path: release-assets/OpenXER-*-setup.exe
+      - name: Sign Windows installer with SignPath
+        if: env.SIGNPATH_ENABLED == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORG_ID }}
+          project-slug: 'openxer'
+          signing-policy-slug: 'release-signing'
+          github-artifact-id: ${{ steps.upload-unsigned-installer.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: 'release-assets'
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows

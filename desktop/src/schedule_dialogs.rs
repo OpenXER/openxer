@@ -2017,8 +2017,12 @@ impl App {
                         }
                         ui.end_row();
                         for (i, r) in results.iter().enumerate() {
-                            let label =
-                                ui.selectable_label(self.sched.check_selected == i, r.check.name());
+                            let label = crate::dialog_kit::flow_selectable(
+                                ui,
+                                self.sched.check_selected == i,
+                                r.check.name(),
+                                160.,
+                            );
                             let r_rect = label.rect;
                             self.action_rects.insert(
                                 format!("check_result_{i}"),
@@ -2104,8 +2108,12 @@ impl App {
                                         )
                                     }
                                 };
-                                let row =
-                                    ui.selectable_label(self.selected == Some(activity), text);
+                                let row = crate::dialog_kit::flow_selectable(
+                                    ui,
+                                    self.selected == Some(activity),
+                                    &text,
+                                    260.,
+                                );
                                 let rr = row.rect;
                                 self.action_rects.insert(
                                     format!("check_item_{n}"),

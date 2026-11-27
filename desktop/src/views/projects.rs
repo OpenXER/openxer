@@ -1232,51 +1232,73 @@ impl App {
                 let bar = Rect::from_min_size(strip, Vec2::new(inner.width(), 17.));
                 let header = sheet::header_button(ui, "projects", bar, "Layout: Projects");
                 self.action("projects_layout", &header);
-                egui::Popup::menu(&header).show(|ui| {
-                    ui.checkbox(&mut self.views.projects.show_details, "Project Details");
-                    ui.separator();
-                    let s = &mut self.views.projects;
-                    let r = ui.radio_value(&mut s.group, Grouping::Eps, "Group by EPS Folder");
-                    let eps_rect = r.rect;
-                    let r2 = ui.radio_value(&mut s.group, Grouping::Status, "Group by Status");
-                    let status_rect = r2.rect;
-                    ui.separator();
-                    ui.label("Show Status");
-                    let mut rects = vec![
-                        ("projects_group_eps".to_string(), eps_rect),
-                        ("projects_group_status".to_string(), status_rect),
-                    ];
-                    for (code, label) in STATUSES {
-                        let mut on = s.status_filter.is_empty() || s.status_filter.contains(code);
-                        let r = ui.checkbox(&mut on, label);
-                        rects.push((format!("projects_show_{code}"), r.rect));
-                        if r.changed() {
-                            if s.status_filter.is_empty() {
-                                s.status_filter =
-                                    STATUSES.iter().map(|(k, _)| k.to_string()).collect();
-                            }
-                            if on {
-                                s.status_filter.insert(code.to_string());
-                            } else {
-                                s.status_filter.remove(code);
-                            }
-                            if s.status_filter.len() == STATUSES.len() {
-                                s.status_filter.clear();
+                egui::Popup::menu(&header)
+                    .style(chrome::popup_menu_style)
+                    .show(|ui| {
+                        let details_item = chrome::Item::new("Project Details")
+                            .checked(self.views.projects.show_details);
+                        if chrome::menu_item(ui, details_item).clicked() {
+                            self.views.projects.show_details = !self.views.projects.show_details;
+                        }
+                        chrome::menu_separator(ui);
+                        let s = &mut self.views.projects;
+                        let r = chrome::menu_item(
+                            ui,
+                            chrome::Item::new("Group by EPS Folder")
+                                .checked(s.group == Grouping::Eps),
+                        );
+                        let eps_rect = r.rect;
+                        if r.clicked() {
+                            s.group = Grouping::Eps;
+                            ui.close();
+                        }
+                        let r2 = chrome::menu_item(
+                            ui,
+                            chrome::Item::new("Group by Status")
+                                .checked(s.group == Grouping::Status),
+                        );
+                        let status_rect = r2.rect;
+                        if r2.clicked() {
+                            s.group = Grouping::Status;
+                            ui.close();
+                        }
+                        chrome::menu_separator(ui);
+                        chrome::menu_item(ui, chrome::Item::new("Show Status").enabled(false));
+                        let mut rects = vec![
+                            ("projects_group_eps".to_string(), eps_rect),
+                            ("projects_group_status".to_string(), status_rect),
+                        ];
+                        for (code, label) in STATUSES {
+                            let on = s.status_filter.is_empty() || s.status_filter.contains(code);
+                            let r = chrome::menu_item(ui, chrome::Item::new(label).checked(on));
+                            rects.push((format!("projects_show_{code}"), r.rect));
+                            if r.clicked() {
+                                if s.status_filter.is_empty() {
+                                    s.status_filter =
+                                        STATUSES.iter().map(|(k, _)| k.to_string()).collect();
+                                }
+                                if !on {
+                                    s.status_filter.insert(code.to_string());
+                                } else {
+                                    s.status_filter.remove(code);
+                                }
+                                if s.status_filter.len() == STATUSES.len() {
+                                    s.status_filter.clear();
+                                }
                             }
                         }
-                    }
-                    ui.separator();
-                    let r = ui.button("Columns...");
-                    rects.push(("projects_layout_customize".into(), r.rect));
-                    if r.clicked() {
-                        customize = true;
-                        ui.close();
-                    }
-                    for (name, r) in rects {
-                        self.action_rects
-                            .insert(name, [r.left(), r.top(), r.right(), r.bottom()]);
-                    }
-                });
+                        chrome::menu_separator(ui);
+                        let r = chrome::menu_item(ui, chrome::Item::new("Columns..."));
+                        rects.push(("projects_layout_customize".into(), r.rect));
+                        if r.clicked() {
+                            customize = true;
+                            ui.close();
+                        }
+                        for (name, r) in rects {
+                            self.action_rects
+                                .insert(name, [r.left(), r.top(), r.right(), r.bottom()]);
+                        }
+                    });
                 let body = Rect::from_min_max(Pos2::new(inner.left(), bar.bottom()), inner.max);
                 let mut ui = ui.new_child(egui::UiBuilder::new().max_rect(body));
                 let ui = &mut ui;

@@ -112,20 +112,24 @@ impl App {
                                 let label = ops::data_type_label(&f.logical);
                                 // The type is chosen while the field holds no values.
                                 if is_sel && f.values == 0 {
-                                    egui::ComboBox::from_id_salt(("udf_type", f.id))
-                                        .width(ui.available_width() - 2.)
-                                        .selected_text(label)
-                                        .show_ui(ui, |ui| {
-                                            for (name, logical) in ops::DATA_TYPES {
-                                                if ui
-                                                    .selectable_label(name == label, name)
-                                                    .clicked()
-                                                    && logical != f.logical
-                                                {
-                                                    type_change = Some((f.id, logical));
-                                                }
-                                            }
-                                        });
+                                    let w = ui.available_width() - 2.;
+                                    let names: Vec<&str> =
+                                        ops::DATA_TYPES.iter().map(|(n, _)| *n).collect();
+                                    let cur =
+                                        ops::DATA_TYPES.iter().position(|(_, l)| *l == f.logical);
+                                    if let (_, Some(idx)) = crate::dialog_kit::flow_combo(
+                                        ui,
+                                        ("udf_type", f.id),
+                                        w,
+                                        &names,
+                                        cur,
+                                        true,
+                                    ) {
+                                        let (_, logical) = ops::DATA_TYPES[idx];
+                                        if logical != f.logical {
+                                            type_change = Some((f.id, logical));
+                                        }
+                                    }
                                 } else {
                                     cell(ui, label);
                                 }

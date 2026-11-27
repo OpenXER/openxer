@@ -183,9 +183,18 @@ impl App {
             Box::new(move |app, c, size, tab| app.threshold_details(c, size, tab, selected)),
             &mut |app, ui| {
                 let f = &mut app.views.records.thresholds.filter;
-                ui.radio_value(f, Filter::All, "All Thresholds");
-                ui.radio_value(f, Filter::Enabled, "Enabled Thresholds");
-                ui.radio_value(f, Filter::Disabled, "Disabled Thresholds");
+                for (choice, label) in [
+                    (Filter::All, "All Thresholds"),
+                    (Filter::Enabled, "Enabled Thresholds"),
+                    (Filter::Disabled, "Disabled Thresholds"),
+                ] {
+                    if chrome::menu_item(ui, chrome::Item::new(label).checked(*f == choice))
+                        .clicked()
+                    {
+                        *f = choice;
+                        ui.close();
+                    }
+                }
             },
         );
         match command {

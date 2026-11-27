@@ -4,6 +4,15 @@ impl App {
         crate::kit_window::deliver_close_requests(ctx);
         // A long operation queued last frame runs now (usy).
         self.busy_frame(ctx);
+        self.grid.frame_verified_serial.set(None);
+        let read_only_events = ctx.input(|i| {
+            i.events.iter().all(|e| {
+                matches!(
+                    e,
+                    egui::Event::PointerMoved(_) | egui::Event::MouseWheel { .. }
+                )
+            })
+        });
         self.first_run_and_drops(ctx);
         // F1 and Ctrl+F1 work over any dialog; Escape closes Help first.
         self.help_keys(ctx);
@@ -47,13 +56,24 @@ impl App {
                 ctx.memory_mut(|m| m.surrender_focus(id));
             }
         }
-        self.schedule_after_edit();
-        self.history.record(
-            &self.project,
-            self.records_revision,
-            ctx.memory(|m| m.focused()).map(|id| id.value()),
-            ctx.input(|i| i.time),
-        );
+        let still_verified = read_only_events
+            && !self.busy_active()
+            && self.link_drag.is_none()
+            && self.gantt_ui.bar_drag.is_none()
+            && self.edit_cell.is_none()
+            && self.grid.pending_edit.is_none()
+            && self.editing.pending.is_none()
+            && !self.open_set.multi()
+            && self.records_revision == self.history.revision()
+            && self.grid.frame_verified_serial.get() == Some(self.history.current_serial());
+        if !still_verified && !self.schedule_after_edit() {
+            self.history.record(
+                &self.project,
+                self.records_revision,
+                ctx.memory(|m| m.focused()).map(|id| id.value()),
+                ctx.input(|i| i.time),
+            );
+        }
         self.sync_dictionary(ctx.input(|i| i.time));
         self.sync_journal();
         // The Activities view's preferences are written from its own state;

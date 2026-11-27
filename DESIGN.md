@@ -24,11 +24,12 @@ the reference look.
 | Text link (a web page, a setting) | `kit::link` | `dialog_kit.rs` |
 | App setup row (name, state mark, detail, its action) | `ai_agents::row::paint` | `desktop/src/ai_agents/row.rs` |
 | Message or confirm box | `kit::message_box`, `kit::message_box_with_lines` | `dialog_kit.rs` |
-| Check box, radio | `Canvas::checkbox`, `kit::check_right`, `kit::radio`, `Canvas::radio` | `dialog_kit.rs` |
-| Edit, read-only field | `Canvas::edit` (`Canvas::edit_masked` for a key, never drawn), `kit::commit_edit`, `kit::field`; several lines: `kit::text_area`, with a hint, a disabled state, scrolling or Enter left to the caller: `kit::text_area_with` | `dialog_kit.rs` |
-| Combo, spin | `Canvas::combo`, `Canvas::spin`; drawn items: `kit::drawn_combo`; a number value: `kit::number_spin` | `dialog_kit.rs` |
+| Check box, radio | `Canvas::checkbox`, `kit::check_right`, `kit::radio`, `Canvas::radio`; flow layout: `kit::flow_checkbox`, `kit::flow_radio`, `kit::flow_selectable` | `dialog_kit.rs` |
+| Edit, read-only field | `Canvas::edit` (`Canvas::edit_masked` for a key, never drawn), `kit::commit_edit`, `kit::field`; flow layout: `kit::flow_edit`, `kit::flow_number_edit`, `kit::flow_parsed_edit`, `kit::flow_parsed_number`; several lines: `kit::text_area`, with a hint, a disabled state, scrolling or Enter left to the caller: `kit::text_area_with` | `dialog_kit.rs` |
+| Combo, spin | `Canvas::combo`, `Canvas::spin`; drawn items: `kit::drawn_combo`; a number value: `kit::number_spin`; flow layout: `kit::flow_combo`, `kit::flow_combo_with` | `dialog_kit.rs` |
+| Toolbar push button (flow layout) | `kit::toolbar_button` | `dialog_kit.rs` |
 | Color picker | `kit::swatch` (flow layout: `kit::color_button`) | `dialog_kit.rs` |
-| Date field with calendar (the `...` inside the edit frame) | `views::sheet::date_field` (commits on Enter); over a dialog's draft text: `views::sheet::date_text_field` | `views/sheet.rs` |
+| Date field with calendar (the `...` inside the edit frame) | `views::sheet::date_field` (commits on Enter); over a dialog's draft text: `views::sheet::date_text_field`; shared month grid: `details::form::calendar_header_and_days` | `views/sheet.rs`, `details/form.rs` |
 | Section box, heading | `kit::section`, `kit::heading` | `dialog_kit.rs` |
 | Wizard page (panel and title) and its bottom row (Cancel alone at the left, Prev / Next / Finish at the right) | `kit::wizard_page`, `kit::wizard_buttons`; a title alone: `kit::wizard_title` | `dialog_kit.rs` |
 | List with scroll bar | `kit::list`, `kit::rows_in`, `kit::cell_text` | `dialog_kit.rs` |
@@ -110,8 +111,11 @@ Drift fails a test, so run the sweeps after any UI change
   still being moved onto the kit are named in `NOT_YET_CONVERTED`; that list
   only ever shrinks.
 - The same file's source check rejects a bare `egui::Area` or a private window
-  wrapper outside the kit, and `kit_controls_are_written_once` rejects a
-  second button column, move pad, tab list or message box.
+  wrapper outside the kit, `controls_are_written_once_and_converted_dialogs_use_them`
+  rejects a second button column, move pad, tab list or message box, and
+  `no_raw_egui_controls_in_desktop_ui` fails if any non-primitive UI file
+  uses raw `egui::ComboBox`, `DragValue`, `Checkbox`, `Button::new`, or
+  `ui.checkbox` / `radio` / `button` / `selectable_*`.
 - `panes::histogram::tests::one_histogram_painter` fails when a second
   cumulative-curve painter appears outside `panes/histogram.rs`.
 - `chat::tests::chat_controls_are_written_once` fails on a second roll-up or

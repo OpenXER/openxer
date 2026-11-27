@@ -363,18 +363,22 @@ impl App {
     /// stored schedule runs once, so the edit and its new dates are one undo
     /// step. Undo and redo restore a recorded state and do not trigger it.
     /// Row order follows Disable Auto-Reorganization like any edit.
-    pub(super) fn schedule_after_edit(&mut self) {
+    pub(super) fn schedule_after_edit(&mut self) -> bool {
         self.refresh_auto_schedule();
-        if !self.sched.auto_schedule
-            || self.open_set.multi()
-            || self
-                .history
-                .is_current(&self.project, self.records_revision)
-            || same_schedule_inputs(self.history.latest_model(), &self.project.model)
+        if !self.sched.auto_schedule || self.open_set.multi() {
+            return false;
+        }
+        if self
+            .history
+            .is_current(&self.project, self.records_revision)
         {
-            return;
+            return true;
+        }
+        if same_schedule_inputs(self.history.latest_model(), &self.project.model) {
+            return false;
         }
         self.schedule_automatically();
+        false
     }
 
     /// A bulk edit (paste, fill down, link, delete...) about to be recorded

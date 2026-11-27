@@ -1269,33 +1269,39 @@ impl App {
                             e.selected = (section, Some(n));
                         }
                         let key = format!("gc_{caption}_param_{n}");
-                        let r = egui::ComboBox::from_id_salt(("gc_set_param", section, n))
-                            .selected_text(title_of(catalog, &a.column))
-                            .width(140.)
-                            .height(300.)
-                            .show_ui(ui, |ui| {
+                        let r = kit::flow_combo_with(
+                            ui,
+                            ("gc_set_param", section, n),
+                            140.,
+                            &title_of(catalog, &a.column),
+                            true,
+                            |ui| {
                                 for (id, title) in targets {
                                     let item =
-                                        ui.selectable_value(&mut a.column, id.clone(), title);
+                                        kit::flow_selectable(ui, a.column == *id, title, 136.);
                                     self.action(&format!("{key}_{id}"), &item);
+                                    if item.clicked() {
+                                        a.column = id.clone();
+                                        ui.close();
+                                    }
                                 }
-                            });
-                        self.action(&key, &r.response);
+                            },
+                        );
+                        self.action(&key, &r);
                         ui.label("=");
                         let r = ui.add_sized([110., 20.], egui::TextEdit::singleline(&mut a.value));
                         self.action(&format!("gc_{caption}_value_{n}"), &r);
-                        egui::ComboBox::from_id_salt(("gc_set_op", section, n))
-                            .selected_text(&a.operator)
-                            .width(44.)
-                            .show_ui(ui, |ui| {
-                                for o in gc::OPERATORS {
-                                    ui.selectable_value(
-                                        &mut a.operator,
-                                        o.to_string(),
-                                        if o.is_empty() { " " } else { o },
-                                    );
-                                }
-                            });
+                        let op_sel = gc::OPERATORS.iter().position(|&o| o == a.operator);
+                        if let (_, Some(idx)) = kit::flow_combo(
+                            ui,
+                            ("gc_set_op", section, n),
+                            44.,
+                            &gc::OPERATORS,
+                            op_sel,
+                            true,
+                        ) {
+                            a.operator = gc::OPERATORS[idx].to_string();
+                        }
                         ui.add_enabled_ui(!a.operator.is_empty(), |ui| {
                             ui.add_sized([100., 20.], egui::TextEdit::singleline(&mut a.value2));
                         });
@@ -1311,23 +1317,22 @@ impl App {
         let heading = e.gc.heading();
         ui.label("");
         let mut pick = None;
-        let r = egui::ComboBox::from_id_salt("gc_if_heading")
-            .selected_text(match heading {
-                Some(true) => GC_ALL,
-                Some(false) => GC_ANY,
-                None => "",
-            })
-            .width(140.)
-            .show_ui(ui, |ui| {
-                for (all, text, key) in [(true, GC_ALL, "all"), (false, GC_ANY, "any")] {
-                    let item = ui.selectable_label(heading == Some(all), text);
-                    self.action(&format!("gc_if_heading_{key}"), &item);
-                    if item.clicked() {
-                        pick = Some(all);
-                    }
+        let head_label = match heading {
+            Some(true) => GC_ALL,
+            Some(false) => GC_ANY,
+            None => "",
+        };
+        let r = kit::flow_combo_with(ui, "gc_if_heading", 140., head_label, true, |ui| {
+            for (all, text, key) in [(true, GC_ALL, "all"), (false, GC_ANY, "any")] {
+                let item = kit::flow_selectable(ui, heading == Some(all), text, 136.);
+                self.action(&format!("gc_if_heading_{key}"), &item);
+                if item.clicked() {
+                    pick = Some(all);
+                    ui.close();
                 }
-            });
-        self.action("gc_if_heading", &r.response);
+            }
+        });
+        self.action("gc_if_heading", &r);
         if let Some(all) = pick {
             e.gc.set_heading(all);
         }
@@ -1341,17 +1346,24 @@ impl App {
             }
             let before = c.column.clone();
             let key = format!("gc_if_param_{n}");
-            let r = egui::ComboBox::from_id_salt(("gc_if_param", n))
-                .selected_text(title_of(catalog, &c.column))
-                .width(140.)
-                .height(300.)
-                .show_ui(ui, |ui| {
+            let r = kit::flow_combo_with(
+                ui,
+                ("gc_if_param", n),
+                140.,
+                &title_of(catalog, &c.column),
+                true,
+                |ui| {
                     for col in catalog {
-                        let item = ui.selectable_value(&mut c.column, col.id.clone(), &col.title);
+                        let item = kit::flow_selectable(ui, c.column == col.id, &col.title, 136.);
                         self.action(&format!("{key}_{}", col.id), &item);
+                        if item.clicked() {
+                            c.column = col.id.clone();
+                            ui.close();
+                        }
                     }
-                });
-            self.action(&key, &r.response);
+                },
+            );
+            self.action(&key, &r);
             let column = columns::find(catalog, &c.column);
             let ops = gc::ops_for(column);
             let mut op = Op::from_key(&c.op).unwrap_or(Op::Equals);
@@ -1365,16 +1377,17 @@ impl App {
                 }
             }
             let key = format!("gc_if_op_{n}");
-            let r = egui::ComboBox::from_id_salt(("gc_if_op", n))
-                .selected_text(op.caption())
-                .width(110.)
-                .show_ui(ui, |ui| {
-                    for o in &ops {
-                        let item = ui.selectable_value(&mut op, *o, o.caption());
-                        self.action(&format!("{key}_{}", o.key()), &item);
+            let r = kit::flow_combo_with(ui, ("gc_if_op", n), 110., op.caption(), true, |ui| {
+                for o in &ops {
+                    let item = kit::flow_selectable(ui, op == *o, o.caption(), 106.);
+                    self.action(&format!("{key}_{}", o.key()), &item);
+                    if item.clicked() {
+                        op = *o;
+                        ui.close();
                     }
-                });
-            self.action(&key, &r.response);
+                }
+            });
+            self.action(&key, &r);
             c.op = op.key().into();
             let r = ui.add_sized([100., 20.], egui::TextEdit::singleline(&mut c.value));
             self.action(&format!("gc_if_value_{n}"), &r);
@@ -1383,13 +1396,16 @@ impl App {
             });
             if mixed && n > 0 {
                 // An older definition's own joins.
-                egui::ComboBox::from_id_salt(("gc_if_join", n))
-                    .selected_text(if c.and { "And" } else { "Or" })
-                    .width(50.)
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut c.and, true, "And");
-                        ui.selectable_value(&mut c.and, false, "Or");
-                    });
+                if let (_, Some(idx)) = kit::flow_combo(
+                    ui,
+                    ("gc_if_join", n),
+                    50.,
+                    &["And", "Or"],
+                    Some(usize::from(!c.and)),
+                    true,
+                ) {
+                    c.and = idx == 0;
+                }
             } else {
                 ui.label("");
             }
@@ -1590,12 +1606,7 @@ impl App {
                 self.action("gc_edit_name", &r);
                 ui.end_row();
                 ui.label("Select Subject Area");
-                ui.add_enabled_ui(false, |ui| {
-                    egui::ComboBox::from_id_salt("gc_subject")
-                        .selected_text("Activities")
-                        .width(200.)
-                        .show_ui(ui, |_| {});
-                });
+                kit::flow_combo(ui, "gc_subject", 200., &["Activities"], Some(0), false);
                 ui.end_row();
             });
         ui.add_space(6.);

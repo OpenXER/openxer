@@ -4,11 +4,9 @@
 //! drop button and a dotted focus rectangle, as the reference grids draw it.
 //! The list opens below the cell and scrolls when it is long.
 use super::*;
+use crate::chrome::pal::{DARK, FACE, SHADOW};
 use crate::schedule_dialogs::Canvas;
 
-const FACE: Color32 = Color32::from_rgb(0xF0, 0xF0, 0xF0);
-const SHADOW: Color32 = Color32::from_rgb(0xA0, 0xA0, 0xA0);
-const DARK: Color32 = Color32::from_rgb(0x69, 0x69, 0x69);
 const ITEM: f32 = 16.;
 /// Rows shown before the list scrolls.
 const VISIBLE: usize = 16;

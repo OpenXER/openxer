@@ -782,6 +782,7 @@ impl App {
     pub(crate) fn touch_records(&mut self) {
         self.records_serial += 1;
         self.records_revision = self.records_serial;
+        self.grid.frame_verified_serial.set(None);
         self.dirty = true;
     }
     pub(crate) fn ids(&self, i: usize) -> (i64, i64) {

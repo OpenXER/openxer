@@ -132,7 +132,10 @@ impl App {
         self.drop_frame_cache();
         // Nothing changes the project until the rows are painted: the
         // project is compared with its undo snapshot once for the pass.
-        self.pin_serial();
+        let own_pin = self.pinned_serial().is_none();
+        if own_pin {
+            self.pin_serial();
+        }
         let rows = self.shown_rows_shared();
         self.layout_opts.hint = None;
         let width = ui.available_width();
@@ -230,7 +233,7 @@ impl App {
         });
         // Band rows are taller for bigger band fonts: the row offsets
         // are computed once per frame and the Gantt rows follow them.
-        let metrics = self.row_metrics(&rows);
+        let metrics = self.row_metrics_shared(&rows);
         let total_h = *metrics.offsets.last().unwrap_or(&0.);
         let mut body_chart = gantt.as_ref().map(|g| g.body);
         let salt = if bottom {
@@ -448,7 +451,7 @@ impl App {
         let content_bottom = scrolled.inner_rect.top() - scrolled.state.offset.y
             + metrics.offsets.last().copied().unwrap_or(0.);
         self.empty_area_menu(ui, bottom, scrolled.inner_rect, content_bottom, table_w);
-        self.grid.row_offsets = metrics.offsets;
+        self.grid.row_offsets = metrics.offsets.clone();
         self.finish_row_drag(ctx);
         self.commit_grid_edit();
         if let (Some(clip), Some(gantt)) = (body_chart, &gantt) {
@@ -501,7 +504,9 @@ impl App {
         self.register_vbar(vname, &vgeo, &painted_vrange);
         // The pass is over. Edits made in it (cells, row drags, new
         // relationships) already ended the pin through their setters.
-        self.unpin_serial();
+        if own_pin {
+            self.unpin_serial();
+        }
         if !rows.iter().any(|r| matches!(r, Row::Activity(_))) {
             // Inside the table body below any bands, clear of the scroll
             // strip under it.

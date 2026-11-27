@@ -2,41 +2,13 @@
 //! grid (`details::grid`), which the dialog kit's list does not cover: the
 //! `Display:` bar over the grid, a tree cell and the code value color
 //! swatch. Buttons, headings, tabs and message boxes are the kit's.
-use crate::chrome::{self, pal, Icon, INK};
-use eframe::egui::{self, Align2, Color32, Pos2, Response, Sense, Stroke, Ui, Vec2};
+use crate::chrome::{self, Icon};
+use eframe::egui::{Color32, Response, Sense, Ui, Vec2};
 
-/// The 18 px `Display: <name>` bar over a grid, with its small down arrow.
+/// The 18 px `Display: <name>` bar over a grid, delegating to `views::sheet::header_button`.
 pub fn display_bar(ui: &mut Ui, width: f32, caption: &str) -> Response {
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 18.), Sense::click());
-    let p = ui.painter();
-    chrome::fill(p, rect, pal::FACE);
-    chrome::hline(p, rect.left(), rect.right(), rect.top(), pal::WHITE);
-    chrome::vline(p, rect.left(), rect.top(), rect.bottom(), pal::WHITE);
-    chrome::hline(
-        p,
-        rect.left(),
-        rect.right(),
-        rect.bottom() - 1.,
-        pal::SHADOW,
-    );
-    chrome::vline(p, rect.right() - 1., rect.top(), rect.bottom(), pal::SHADOW);
-    let c = Pos2::new(rect.left() + 10., rect.center().y);
-    p.add(egui::Shape::line(
-        vec![
-            c + Vec2::new(-4., -2.),
-            c + Vec2::new(0., 2.),
-            c + Vec2::new(4., -2.),
-        ],
-        Stroke::new(1_f32, INK),
-    ));
-    p.text(
-        Pos2::new(rect.left() + 19., rect.center().y),
-        Align2::LEFT_CENTER,
-        format!("Display: {caption}"),
-        chrome::table_font(),
-        INK,
-    );
-    response
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 18.), Sense::hover());
+    crate::views::sheet::header_button(ui, "dict_display", rect, &format!("Display: {caption}"))
 }
 
 /// A tree cell: indent 14 px per level, the dictionary icon, then the text.

@@ -25,6 +25,10 @@ pub fn compact_dashes() -> CompactDashes {
     CompactDashes(COMPACT_DASHES.replace(on))
 }
 
+pub fn is_compact_dashes() -> bool {
+    COMPACT_DASHES.get()
+}
+
 #[cfg(test)]
 thread_local! {
     /// Tests: paint every dash as its own mesh, as the screen does.
@@ -212,14 +216,19 @@ pub type Span = (f32, f32, f32);
 /// Paints spans in one color.
 pub fn spans(painter: &Painter, spans: &[Span], color: Color32) {
     let mut mesh = egui::Mesh::default();
+    spans_into(&mut mesh, spans, color);
+    if !mesh.is_empty() {
+        painter.add(egui::Shape::mesh(mesh));
+    }
+}
+
+/// Appends spans in one color into an existing triangle mesh.
+pub fn spans_into(mesh: &mut egui::Mesh, spans: &[Span], color: Color32) {
     for &(y, a, b) in spans {
         mesh.add_colored_rect(
             Rect::from_min_max(Pos2::new(a, y), Pos2::new(b + 1., y + 1.)),
             color,
         );
-    }
-    if !mesh.is_empty() {
-        painter.add(egui::Shape::mesh(mesh));
     }
 }
 
@@ -259,6 +268,39 @@ pub fn pixel_path(painter: &Painter, points: &[(f32, f32)], color: Color32, styl
         } else {
             let (a, b) = if ay <= by { (ay, by) } else { (by, ay) };
             vline(painter, ax, a, b + 1., 1., color, style, a);
+        }
+    }
+}
+
+/// Appends an axis-aligned pixel path into an existing triangle mesh.
+pub fn pixel_path_into(
+    mesh: &mut egui::Mesh,
+    points: &[(f32, f32)],
+    color: Color32,
+    style: LineStyle,
+) {
+    for pair in points.windows(2) {
+        let ((ax, ay), (bx, by)) = (pair[0], pair[1]);
+        if ay == by {
+            let (x0, x1) = if ax <= bx { (ax, bx) } else { (bx, ax) };
+            dash_runs(style, x0, x0, x1 + 1., |a, b| {
+                if b > a {
+                    mesh.add_colored_rect(
+                        Rect::from_min_max(Pos2::new(a, ay), Pos2::new(b, ay + 1.)),
+                        color,
+                    );
+                }
+            });
+        } else {
+            let (y0, y1) = if ay <= by { (ay, by) } else { (by, ay) };
+            dash_runs(style, y0, y0, y1 + 1., |a, b| {
+                if b > a {
+                    mesh.add_colored_rect(
+                        Rect::from_min_max(Pos2::new(ax, a), Pos2::new(ax + 1., b)),
+                        color,
+                    );
+                }
+            });
         }
     }
 }

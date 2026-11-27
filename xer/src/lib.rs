@@ -1,5 +1,5 @@
 //! XER boundary and presentation metadata. Unknown tables and columns survive export.
-use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime};
+use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, Timelike};
 use openxer_engine::features::{LevelPriority, LevelingInputs, PriorityField, ResourceDemand};
 use openxer_engine::{
     calendar::{CalendarAdapter, Shifts, WorkCalendar, DAY},
@@ -69,6 +69,54 @@ impl Table {
         for (key, val) in values {
             self.set(index, key, val.clone());
         }
+    }
+    pub fn field_index(&self) -> FieldIndex {
+        let mut map = HashMap::with_capacity(self.fields.len());
+        for (i, f) in self.fields.iter().enumerate() {
+            map.entry(f.to_ascii_lowercase()).or_insert(i);
+        }
+        FieldIndex { map }
+    }
+}
+
+/// Case-insensitive O(1) column lookup for a [`Table`].
+#[derive(Clone, Debug, Default)]
+pub struct FieldIndex {
+    map: HashMap<String, usize>,
+}
+
+impl FieldIndex {
+    pub fn col(&self, name: &str) -> Option<usize> {
+        if name.bytes().all(|b| !b.is_ascii_uppercase()) {
+            self.map.get(name).copied()
+        } else {
+            self.map.get(&name.to_ascii_lowercase()).copied()
+        }
+    }
+    pub fn value<'a>(&self, row: &'a [String], name: &str) -> &'a str {
+        self.col(name)
+            .and_then(|i| row.get(i))
+            .map_or("", String::as_str)
+    }
+    pub fn get(row: &[String], col: Option<usize>) -> &str {
+        col.and_then(|i| row.get(i)).map_or("", String::as_str)
+    }
+    pub fn ensure(&mut self, table: &mut Table, name: &str) -> usize {
+        if let Some(i) = self.col(name) {
+            return i;
+        }
+        let col = table.fields.len();
+        table.fields.push(name.into());
+        for r in &mut table.rows {
+            r.push(String::new());
+        }
+        self.map.insert(name.to_ascii_lowercase(), col);
+        col
+    }
+    pub fn set(&mut self, table: &mut Table, row: usize, name: &str, value: String) {
+        let col = self.ensure(table, name);
+        table.rows[row].resize(table.fields.len(), String::new());
+        table.rows[row][col] = value;
     }
 }
 /// Table order of a reference project export. Tables seen in the reference
@@ -1106,22 +1154,92 @@ fn epoch() -> NaiveDateTime {
         .and_hms_opt(0, 0, 0)
         .unwrap()
 }
+fn ascii_digits(b: &[u8]) -> Option<u32> {
+    let mut v = 0_u32;
+    for &c in b {
+        if !c.is_ascii_digit() {
+            return None;
+        }
+        v = v * 10 + u32::from(c - b'0');
+    }
+    Some(v)
+}
 pub fn parse_absolute(s: &str) -> Option<i64> {
-    if s.trim().is_empty() {
+    let s = s.trim();
+    if s.is_empty() {
         return None;
     }
-    let d = NaiveDateTime::parse_from_str(s.trim(), "%Y-%m-%d %H:%M:%S")
-        .or_else(|_| NaiveDateTime::parse_from_str(s.trim(), "%Y-%m-%d %H:%M"))
-        .or_else(|_| {
-            NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d").map(|d| d.and_hms_opt(0, 0, 0).unwrap())
-        })
-        .ok()?;
+    let b = s.as_bytes();
+    let fast = match b.len() {
+        16 if b[4] == b'-' && b[7] == b'-' && b[10] == b' ' && b[13] == b':' => {
+            if let (Some(y), Some(m), Some(d), Some(hh), Some(mm)) = (
+                ascii_digits(&b[0..4]),
+                ascii_digits(&b[5..7]),
+                ascii_digits(&b[8..10]),
+                ascii_digits(&b[11..13]),
+                ascii_digits(&b[14..16]),
+            ) {
+                NaiveDate::from_ymd_opt(y as i32, m, d).and_then(|dt| dt.and_hms_opt(hh, mm, 0))
+            } else {
+                None
+            }
+        }
+        19 if b[4] == b'-' && b[7] == b'-' && b[10] == b' ' && b[13] == b':' && b[16] == b':' => {
+            if let (Some(y), Some(m), Some(d), Some(hh), Some(mm), Some(ss)) = (
+                ascii_digits(&b[0..4]),
+                ascii_digits(&b[5..7]),
+                ascii_digits(&b[8..10]),
+                ascii_digits(&b[11..13]),
+                ascii_digits(&b[14..16]),
+                ascii_digits(&b[17..19]),
+            ) {
+                NaiveDate::from_ymd_opt(y as i32, m, d).and_then(|dt| dt.and_hms_opt(hh, mm, ss))
+            } else {
+                None
+            }
+        }
+        10 if b[4] == b'-' && b[7] == b'-' => {
+            if let (Some(y), Some(m), Some(d)) = (
+                ascii_digits(&b[0..4]),
+                ascii_digits(&b[5..7]),
+                ascii_digits(&b[8..10]),
+            ) {
+                NaiveDate::from_ymd_opt(y as i32, m, d).and_then(|dt| dt.and_hms_opt(0, 0, 0))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
+    let d = match fast {
+        Some(d) => d,
+        None => NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+            .or_else(|_| NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M"))
+            .or_else(|_| {
+                NaiveDate::parse_from_str(s, "%Y-%m-%d").map(|d| d.and_hms_opt(0, 0, 0).unwrap())
+            })
+            .ok()?,
+    };
     Some((d - epoch()).num_minutes())
 }
 pub fn date_string(origin: i64, value: Option<i64>) -> String {
     value
         .and_then(|v| epoch().checked_add_signed(Duration::minutes(origin * DAY + v)))
-        .map_or(String::new(), |d| d.format("%Y-%m-%d %H:%M").to_string())
+        .map_or(String::new(), |d| {
+            let y = d.year();
+            if (0..=9999).contains(&y) {
+                format!(
+                    "{:04}-{:02}-{:02} {:02}:{:02}",
+                    y,
+                    d.month(),
+                    d.day(),
+                    d.hour(),
+                    d.minute()
+                )
+            } else {
+                d.format("%Y-%m-%d %H:%M").to_string()
+            }
+        })
 }
 pub fn short_date(origin: i64, value: Option<i64>) -> String {
     value
@@ -1334,27 +1452,37 @@ fn check_assignment_hours(doc: &Document, pid: i64, activities: &[Activity]) -> 
     let Some(t) = doc.table("TASKRSRC") else {
         return Ok(());
     };
+    let cols = t.field_index();
+    let proj_c = cols.col("proj_id");
+    let task_c = cols.col("task_id");
+    let id_c = cols.col("taskrsrc_id");
+    let rq_c = cols.col("remain_qty");
+    let rr_c = cols.col("remain_qty_per_hr");
+    let tq_c = cols.col("target_qty");
+    let tr_c = cols.col("target_qty_per_hr");
+    let relag_c = cols.col("relag_drtn_hr_cnt");
+    let tlag_c = cols.col("target_lag_drtn_hr_cnt");
     let number = |text: &str| text.trim().parse::<f64>().ok();
     for r in &t.rows {
-        if num(t.value(r, "proj_id")) != pid {
+        if num(FieldIndex::get(r, proj_c)) != pid {
             continue;
         }
         let what = || {
-            let task = num(t.value(r, "task_id"));
+            let task = num(FieldIndex::get(r, task_c));
             let code = activities
                 .iter()
                 .find(|a| a.task_id == task)
                 .map_or_else(|| task.to_string(), |a| a.task_code.clone());
             format!(
                 "Assignment {} of activity {code}",
-                t.value(r, "taskrsrc_id").trim()
+                FieldIndex::get(r, id_c).trim()
             )
         };
-        for (qty, rate, label) in [
-            ("remain_qty", "remain_qty_per_hr", "remaining"),
-            ("target_qty", "target_qty_per_hr", "budgeted"),
-        ] {
-            let (Some(q), Some(h)) = (number(t.value(r, qty)), number(t.value(r, rate))) else {
+        for (qty, rate, label) in [(rq_c, rr_c, "remaining"), (tq_c, tr_c, "budgeted")] {
+            let (Some(q), Some(h)) = (
+                number(FieldIndex::get(r, qty)),
+                number(FieldIndex::get(r, rate)),
+            ) else {
                 continue;
             };
             if h != 0. && (!(q / h).is_finite() || (q / h).abs() > MAX_HOURS) {
@@ -1364,11 +1492,8 @@ fn check_assignment_hours(doc: &Document, pid: i64, activities: &[Activity]) -> 
                 ));
             }
         }
-        for (column, label) in [
-            ("relag_drtn_hr_cnt", "lag"),
-            ("target_lag_drtn_hr_cnt", "planned lag"),
-        ] {
-            if let Some(v) = number(t.value(r, column)) {
+        for (column, label) in [(relag_c, "lag"), (tlag_c, "planned lag")] {
+            if let Some(v) = number(FieldIndex::get(r, column)) {
                 if !v.is_finite() || v.abs() > MAX_HOURS {
                     return Err(format!("{} {label}: {v} hours is out of range", what()));
                 }
@@ -1496,35 +1621,37 @@ fn examples(codes: &[String]) -> String {
 /// Writes the owned columns of one row. A cell keeps its original text when that
 /// text already imports as the value being written, so an unchanged value is
 /// never reformatted. Fresh rows are written in full.
-struct RowWriter<'a> {
-    table: &'a mut Table,
-    row: usize,
-    fresh: bool,
+pub(crate) struct RowWriter<'a> {
+    pub(crate) table: &'a mut Table,
+    pub(crate) cols: &'a mut FieldIndex,
+    pub(crate) row: usize,
+    pub(crate) fresh: bool,
 }
 impl RowWriter<'_> {
-    fn old(&self, field: &str) -> &str {
-        self.table.value(&self.table.rows[self.row], field)
+    pub(crate) fn old(&self, field: &str) -> &str {
+        self.cols.value(&self.table.rows[self.row], field)
     }
-    fn put(
+    pub(crate) fn put(
         &mut self,
         field: &str,
         keeps: impl FnOnce(&str) -> bool,
         value: impl FnOnce() -> String,
-    ) {
+    ) -> bool {
         let old = self.old(field);
         if !self.fresh && keeps(old) {
-            return;
+            return false;
         }
         let value = value();
-        if old == value || (value.is_empty() && self.table.field(field).is_none()) {
-            return;
+        if old == value || (value.is_empty() && self.cols.col(field).is_none()) {
+            return false;
         }
-        self.table.set(self.row, field, value);
+        self.cols.set(self.table, self.row, field, value);
+        true
     }
     /// Fill a blank cell of a fresh row with the value the reference writes for new rows.
-    fn default(&mut self, field: &str, value: &str) {
-        if self.table.field(field).is_some() && self.old(field).is_empty() {
-            self.table.set(self.row, field, value.into());
+    pub(crate) fn default(&mut self, field: &str, value: &str) {
+        if self.cols.col(field).is_some() && self.old(field).is_empty() {
+            self.cols.set(self.table, self.row, field, value.into());
         }
     }
 }
@@ -1625,17 +1752,22 @@ impl ProjectData {
             rows: vec![],
         };
         let tasks = document.table("TASK").unwrap_or(&empty);
+        let tcols = tasks.field_index();
+        let t_proj = tcols.col("proj_id");
+        let t_act_start = tcols.col("act_start_date");
+        let t_act_end = tcols.col("act_end_date");
+        let t_clndr = tcols.col("clndr_id");
         let rows: Vec<_> = tasks
             .rows
             .iter()
-            .filter(|r| num(tasks.value(r, "proj_id")) == project_id)
+            .filter(|r| num(FieldIndex::get(r, t_proj)) == project_id)
             .collect();
         let earliest = rows
             .iter()
             .flat_map(|r| {
                 [
-                    parse_absolute(tasks.value(r, "act_start_date")),
-                    parse_absolute(tasks.value(r, "act_end_date")),
+                    parse_absolute(FieldIndex::get(r, t_act_start)),
+                    parse_absolute(FieldIndex::get(r, t_act_end)),
                 ]
             })
             .flatten()
@@ -1645,7 +1777,7 @@ impl ProjectData {
         let relative = |s: &str| parse_absolute(s).map(|v| v - origin_serial * DAY);
         let used_calendars: std::collections::HashSet<&str> = rows
             .iter()
-            .map(|r| tasks.value(r, "clndr_id"))
+            .map(|r| FieldIndex::get(r, t_clndr))
             .chain([pv("clndr_id")])
             .collect();
         let mut calendars = vec![];
@@ -1707,24 +1839,62 @@ impl ProjectData {
         let wbs_ids: std::collections::HashSet<i64> = document
             .table("PROJWBS")
             .map(|t| {
+                let cols = t.field_index();
+                let proj_c = cols.col("proj_id");
+                let wbs_c = cols.col("wbs_id");
                 t.rows
                     .iter()
-                    .filter(|r| num(t.value(r, "proj_id")) == project_id)
-                    .map(|r| num(t.value(r, "wbs_id")))
+                    .filter(|r| num(FieldIndex::get(r, proj_c)) == project_id)
+                    .map(|r| num(FieldIndex::get(r, wbs_c)))
                     .collect()
             })
             .unwrap_or_default();
-        let mut activities = vec![];
+        let mut activities = Vec::with_capacity(rows.len());
         let mut details = BTreeMap::new();
-        let mut indices = HashMap::new();
-        let mut codes: HashMap<String, usize> = HashMap::new();
+        let mut indices = HashMap::with_capacity(rows.len());
+        let mut codes: HashMap<String, usize> = HashMap::with_capacity(rows.len());
         let mut missing_calendar = vec![];
         let mut missing_wbs = vec![];
         let mut duplicate_codes = vec![];
+        let c_task_id = tcols.col("task_id");
+        let c_task_code = tcols.col("task_code");
+        let c_task_type = tcols.col("task_type");
+        let c_clndr_id = tcols.col("clndr_id");
+        let c_wbs_id = tcols.col("wbs_id");
+        let c_cstr_type = tcols.col("cstr_type");
+        let c_cstr_date = tcols.col("cstr_date");
+        let c_cstr_type2 = tcols.col("cstr_type2");
+        let c_cstr_date2 = tcols.col("cstr_date2");
+        let c_status_code = tcols.col("status_code");
+        let c_act_start = tcols.col("act_start_date");
+        let c_act_end = tcols.col("act_end_date");
+        let c_resume = tcols.col("resume_date");
+        let c_expect_end = tcols.col("expect_end_date");
+        let c_rem = tcols.col("remain_drtn_hr_cnt");
+        let c_ext_es = tcols.col("external_early_start_date");
+        let c_ext_le = tcols.col("external_late_end_date");
+        let c_restart = tcols.col("restart_date");
+        let c_reend = tcols.col("reend_date");
+        let c_es = tcols.col("early_start_date");
+        let c_ef = tcols.col("early_end_date");
+        let c_ls = tcols.col("late_start_date");
+        let c_lf = tcols.col("late_end_date");
+        let c_rls = tcols.col("rem_late_start_date");
+        let c_rlf = tcols.col("rem_late_end_date");
+        let c_tf = tcols.col("total_float_hr_cnt");
+        let c_ff = tcols.col("free_float_hr_cnt");
+        let c_drv = tcols.col("driving_path_flag");
+        let c_ts = tcols.col("target_start_date");
+        let c_te = tcols.col("target_end_date");
+        let c_fp = tcols.col("float_path");
+        let c_fpo = tcols.col("float_path_order");
+        let c_name = tcols.col("task_name");
+        let c_orig_dur = tcols.col("target_drtn_hr_cnt");
+        let c_pct = tcols.col("phys_complete_pct");
         for r in rows {
-            let v = |k| tasks.value(r, k);
-            let id = num(v("task_id"));
-            let code = v("task_code");
+            let v = |c: Option<usize>| FieldIndex::get(r, c);
+            let id = num(v(c_task_id));
+            let code = v(c_task_code);
             if let Some(&other) = indices.get(&id) {
                 let other: &Activity = &activities[other];
                 return Err(format!(
@@ -1732,82 +1902,84 @@ impl ProjectData {
                     other.task_code
                 ));
             }
-            let task_type = task_type(v("task_type")).ok_or_else(|| {
-                format!("Activity {code} uses unsupported type {}", v("task_type"))
+            let task_type = task_type(v(c_task_type)).ok_or_else(|| {
+                format!("Activity {code} uses unsupported type {}", v(c_task_type))
             })?;
-            let duration = |k: &'static str, what: &str| {
-                parse_hours(v(k))
+            let duration = |c: Option<usize>, what: &str| {
+                parse_hours(v(c))
                     .map(Option::unwrap_or_default)
                     .map_err(|e| format!("Activity {code} {what}: {e}"))
             };
-            let float = |k: &'static str| parse_hours(v(k)).ok().flatten();
-            let cal = match cal_index.get(v("clndr_id")) {
+            let float = |c: Option<usize>| parse_hours(v(c)).ok().flatten();
+            let cal = match cal_index.get(v(c_clndr_id)) {
                 Some(&i) => i,
                 None => {
                     missing_calendar.push(code.to_string());
                     project_calendar
                 }
             };
-            if !wbs_ids.contains(&num(v("wbs_id"))) {
+            if !wbs_ids.contains(&num(v(c_wbs_id))) {
                 missing_wbs.push(code.to_string());
             }
             if codes.insert(code.to_string(), activities.len()).is_some() {
                 duplicate_codes.push(code.to_string());
             }
-            let has_primary = !v("cstr_type").is_empty();
+            let has_primary = !v(c_cstr_type).is_empty();
+            let restart_val = relative(v(c_restart));
+            let reend_val = relative(v(c_reend));
             let a = Activity {
                 task_id: id,
                 task_code: code.into(),
                 task_type,
-                status: status(v("status_code")),
-                act_start: relative(v("act_start_date")),
-                act_finish: relative(v("act_end_date")),
-                resume: relative(v("resume_date")),
-                expect_end: relative(v("expect_end_date")),
-                cstr: constraint(v("cstr_type")),
-                cstr_date: relative(v("cstr_date")),
+                status: status(v(c_status_code)),
+                act_start: relative(v(c_act_start)),
+                act_finish: relative(v(c_act_end)),
+                resume: relative(v(c_resume)),
+                expect_end: relative(v(c_expect_end)),
+                cstr: constraint(v(c_cstr_type)),
+                cstr_date: relative(v(c_cstr_date)),
                 cstr2: if has_primary {
-                    constraint(v("cstr_type2"))
+                    constraint(v(c_cstr_type2))
                 } else {
                     CstrType::None
                 },
                 cstr_date2: if has_primary {
-                    relative(v("cstr_date2"))
+                    relative(v(c_cstr_date2))
                 } else {
                     None
                 },
-                rem: duration("remain_drtn_hr_cnt", "remaining duration")?,
+                rem: duration(c_rem, "remaining duration")?,
                 cal,
-                ext_early_start: relative(v("external_early_start_date")),
-                ext_late_end: relative(v("external_late_end_date")),
-                rem_restart: relative(v("restart_date")),
-                rem_reend: relative(v("reend_date")),
-                restart: relative(v("restart_date")),
-                reend: relative(v("reend_date")),
-                early_start: relative(v("early_start_date")),
-                early_finish: relative(v("early_end_date")),
-                late_start: relative(v("late_start_date")),
-                late_finish: relative(v("late_end_date")),
-                rem_late_start: relative(v("rem_late_start_date")),
-                rem_late_finish: relative(v("rem_late_end_date")),
-                total_float: float("total_float_hr_cnt"),
-                free_float: float("free_float_hr_cnt"),
-                driving_path: v("driving_path_flag") == "Y",
-                target_start: relative(v("target_start_date")),
-                target_finish: relative(v("target_end_date")),
-                float_path: num(v("float_path")),
-                float_path_order: num(v("float_path_order")),
+                ext_early_start: relative(v(c_ext_es)),
+                ext_late_end: relative(v(c_ext_le)),
+                rem_restart: restart_val,
+                rem_reend: reend_val,
+                restart: restart_val,
+                reend: reend_val,
+                early_start: relative(v(c_es)),
+                early_finish: relative(v(c_ef)),
+                late_start: relative(v(c_ls)),
+                late_finish: relative(v(c_lf)),
+                rem_late_start: relative(v(c_rls)),
+                rem_late_finish: relative(v(c_rlf)),
+                total_float: float(c_tf),
+                free_float: float(c_ff),
+                driving_path: v(c_drv) == "Y",
+                target_start: relative(v(c_ts)),
+                target_finish: relative(v(c_te)),
+                float_path: num(v(c_fp)),
+                float_path_order: num(v(c_fpo)),
                 ..Activity::default()
             };
             details.insert(
                 id,
                 ActivityDetails {
-                    name: v("task_name").into(),
-                    wbs: num(v("wbs_id")),
-                    original_duration: duration("target_drtn_hr_cnt", "original duration")?,
+                    name: v(c_name).into(),
+                    wbs: num(v(c_wbs_id)),
+                    original_duration: duration(c_orig_dur, "original duration")?,
                     // Set from the assignments below.
                     resource_driven_duration: false,
-                    percent: v("phys_complete_pct").parse().unwrap_or(0.0),
+                    percent: v(c_pct).parse().unwrap_or(0.0),
                     minted: None,
                 },
             );
@@ -1839,9 +2011,17 @@ impl ProjectData {
         let mut external = 0;
         let mut dangling = 0;
         if let Some(table) = document.table("TASKPRED") {
+            let pcols = table.field_index();
+            let p_proj = pcols.col("proj_id");
+            let p_pred_proj = pcols.col("pred_proj_id");
+            let p_pred_task = pcols.col("pred_task_id");
+            let p_task = pcols.col("task_id");
+            let p_lag = pcols.col("lag_hr_cnt");
+            let p_id = pcols.col("task_pred_id");
+            let p_type = pcols.col("pred_type");
             for r in &table.rows {
-                let succ_project = num(table.value(r, "proj_id"));
-                let pred_project = num(table.value(r, "pred_proj_id"));
+                let succ_project = num(FieldIndex::get(r, p_proj));
+                let pred_project = num(FieldIndex::get(r, p_pred_proj));
                 if succ_project != project_id && pred_project != project_id {
                     continue;
                 }
@@ -1849,23 +2029,21 @@ impl ProjectData {
                 // with that project even when the activity ids also occur in
                 // this one (two projects made apart can both hold id 1010).
                 // A blank project id reads as this project, as before.
-                let ours = |field: &str| {
-                    let v = table.value(r, field).trim();
+                let ours = |col: Option<usize>| {
+                    let v = FieldIndex::get(r, col).trim();
                     v.is_empty() || num(v) == project_id
                 };
-                let inside = ours("proj_id") && ours("pred_proj_id");
-                let pred = indices.get(&num(table.value(r, "pred_task_id")));
-                let succ = indices.get(&num(table.value(r, "task_id")));
+                let inside = ours(p_proj) && ours(p_pred_proj);
+                let pred = indices.get(&num(FieldIndex::get(r, p_pred_task)));
+                let succ = indices.get(&num(FieldIndex::get(r, p_task)));
                 if let (Some(&pred), Some(&succ), true) = (pred, succ, inside) {
-                    let lag = parse_hours(table.value(r, "lag_hr_cnt"))
-                        .map_err(|e| {
-                            format!("Relationship {} lag: {e}", table.value(r, "task_pred_id"))
-                        })?
+                    let lag = parse_hours(FieldIndex::get(r, p_lag))
+                        .map_err(|e| format!("Relationship {} lag: {e}", FieldIndex::get(r, p_id)))?
                         .unwrap_or(0);
                     links.push(Link {
                         pred,
                         succ,
-                        link_type: link_type(table.value(r, "pred_type")),
+                        link_type: link_type(FieldIndex::get(r, p_type)),
                         lag,
                         driving_path: false,
                     });
@@ -1959,14 +2137,21 @@ impl ProjectData {
         }
         let mut wbs = vec![];
         if let Some(t) = document.table("PROJWBS") {
+            let cols = t.field_index();
+            let c_proj = cols.col("proj_id");
+            let c_id = cols.col("wbs_id");
+            let c_parent = cols.col("parent_wbs_id");
+            let c_short = cols.col("wbs_short_name");
+            let c_name = cols.col("wbs_name");
+            let c_seq = cols.col("seq_num");
             for r in &t.rows {
-                if num(t.value(r, "proj_id")) == project_id {
+                if num(FieldIndex::get(r, c_proj)) == project_id {
                     wbs.push(Wbs {
-                        id: num(t.value(r, "wbs_id")),
-                        parent: t.value(r, "parent_wbs_id").parse().ok(),
-                        code: t.value(r, "wbs_short_name").into(),
-                        name: t.value(r, "wbs_name").into(),
-                        sequence: num(t.value(r, "seq_num")),
+                        id: num(FieldIndex::get(r, c_id)),
+                        parent: FieldIndex::get(r, c_parent).parse().ok(),
+                        code: FieldIndex::get(r, c_short).into(),
+                        name: FieldIndex::get(r, c_name).into(),
+                        sequence: num(FieldIndex::get(r, c_seq)),
                     });
                 }
             }
@@ -2383,7 +2568,15 @@ impl ProjectData {
         let origin = m.origin_serial;
         let relative = |s: &str| parse_absolute(s).map(|v| v - origin * DAY);
         let date = move |v: Option<i64>| move || date_string(origin, v);
-        let same_date = move |v: Option<i64>| move |old: &str| relative(old) == v;
+        let same_date = move |v: Option<i64>| {
+            move |old: &str| {
+                if old.is_empty() {
+                    v.is_none()
+                } else {
+                    relative(old) == v
+                }
+            }
+        };
         if let Some(project) = doc
             .tables
             .iter_mut()
@@ -2395,8 +2588,10 @@ impl ProjectData {
                 .position(|r| num(project.value(r, "proj_id")) == pid)
             {
                 let p = &m.project;
+                let mut cols = project.field_index();
                 let mut w = RowWriter {
                     table: project,
+                    cols: &mut cols,
                     row,
                     fresh: false,
                 };
@@ -2451,15 +2646,19 @@ impl ProjectData {
             .unwrap_or_default();
         let stamp = now_stamp();
         let table = doc.table_mut("TASK");
-        let mut rows: HashMap<i64, usize> = HashMap::new();
+        let mut cols = table.field_index();
+        let proj_c = cols.col("proj_id");
+        let task_c = cols.col("task_id");
+        let type_c = cols.col("task_type");
+        let mut rows: HashMap<i64, usize> = HashMap::with_capacity(m.activities.len());
         for (i, r) in table.rows.iter().enumerate() {
-            if num(table.value(r, "proj_id")) == pid {
-                rows.entry(num(table.value(r, "task_id"))).or_insert(i);
+            if num(FieldIndex::get(r, proj_c)) == pid {
+                rows.entry(num(FieldIndex::get(r, task_c))).or_insert(i);
             }
         }
         for a in &m.activities {
             let (row, fresh) = match rows.get(&a.task_id) {
-                Some(&i) => (i, table.value(&table.rows[i], "task_type").is_empty()),
+                Some(&i) => (i, FieldIndex::get(&table.rows[i], type_c).is_empty()),
                 None => {
                     table.rows.push(vec![String::new(); table.fields.len()]);
                     (table.rows.len() - 1, true)
@@ -2468,11 +2667,20 @@ impl ProjectData {
             let d = self.details.get(&a.task_id).cloned().unwrap_or_default();
             let mut w = RowWriter {
                 table: &mut *table,
+                cols: &mut cols,
                 row,
                 fresh,
             };
             let date = |v: Option<i64>| move || date_string(origin, v);
-            let same_date = |v: Option<i64>| move |old: &str| relative(old) == v;
+            let same_date = |v: Option<i64>| {
+                move |old: &str| {
+                    if old.is_empty() {
+                        v.is_none()
+                    } else {
+                        relative(old) == v
+                    }
+                }
+            };
             let id = a.task_id.to_string();
             w.put("task_id", |o| num(o) == a.task_id, || id.clone());
             w.put("proj_id", |o| num(o) == pid, || pid.to_string());
@@ -2642,17 +2850,26 @@ impl ProjectData {
             );
         }
         let table = doc.table_mut("TASKPRED");
-        let key =
-            |t: &Table, r: &[String]| (num(t.value(r, "pred_task_id")), num(t.value(r, "task_id")));
-        let mut candidates: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+        let mut cols = table.field_index();
+        let c_pred = cols.col("pred_task_id");
+        let c_task = cols.col("task_id");
+        let c_proj = cols.col("proj_id");
+        let c_pred_proj = cols.col("pred_proj_id");
+        let c_id = cols.col("task_pred_id");
+        let mut c_type = cols.col("pred_type");
+        let mut candidates: HashMap<(i64, i64), Vec<usize>> = HashMap::with_capacity(m.links.len());
         for (i, r) in table.rows.iter().enumerate() {
             // A relationship with another project is never taken for one of
             // this project's own, even when the activity ids match.
-            let pred_project = table.value(r, "pred_proj_id").trim();
-            if num(table.value(r, "proj_id")) == pid
+            let pred_project = FieldIndex::get(r, c_pred_proj).trim();
+            if num(FieldIndex::get(r, c_proj)) == pid
                 && (pred_project.is_empty() || num(pred_project) == pid)
             {
-                candidates.entry(key(table, r)).or_default().push(i);
+                let key = (
+                    num(FieldIndex::get(r, c_pred)),
+                    num(FieldIndex::get(r, c_task)),
+                );
+                candidates.entry(key).or_default().push(i);
             }
         }
         let link_types: std::collections::HashSet<(i64, i64, &str)> = m
@@ -2670,7 +2887,7 @@ impl ProjectData {
         let mut next = table
             .rows
             .iter()
-            .map(|r| num(table.value(r, "task_pred_id")))
+            .map(|r| num(FieldIndex::get(r, c_id)))
             .max()
             .unwrap_or(0)
             + 1;
@@ -2680,14 +2897,14 @@ impl ProjectData {
             let rows = candidates.get(&(pred, succ)).map_or(&[][..], Vec::as_slice);
             // A row whose stored type no link of this pair uses can take this link.
             let free_type = |i: usize| {
-                let raw = table.value(&table.rows[i], "pred_type");
+                let raw = FieldIndex::get(&table.rows[i], c_type);
                 [LinkType::FS, LinkType::SS, LinkType::FF, LinkType::SF]
                     .into_iter()
                     .find(|t| t.as_str() == raw)
                     .is_none_or(|t| !link_types.contains(&(pred, succ, t.as_str())))
             };
             let same_type = rows.iter().copied().find(|&i| {
-                !used[i] && table.value(&table.rows[i], "pred_type") == l.link_type.as_str()
+                !used[i] && FieldIndex::get(&table.rows[i], c_type) == l.link_type.as_str()
             });
             let (row, fresh) = match same_type
                 .or_else(|| rows.iter().copied().find(|&i| !used[i] && free_type(i)))
@@ -2697,7 +2914,7 @@ impl ProjectData {
                     table.rows.push(vec![String::new(); table.fields.len()]);
                     used.push(false);
                     let i = table.rows.len() - 1;
-                    table.set(i, "task_pred_id", next.to_string());
+                    cols.set(table, i, "task_pred_id", next.to_string());
                     next += 1;
                     (i, true)
                 }
@@ -2705,6 +2922,7 @@ impl ProjectData {
             used[row] = true;
             let mut w = RowWriter {
                 table: &mut *table,
+                cols: &mut cols,
                 row,
                 fresh,
             };
@@ -2722,9 +2940,9 @@ impl ProjectData {
                 |o| hours(o) == l.lag,
                 || out_hours(Some(l.lag)),
             );
+            c_type = cols.col("pred_type");
         }
-        let columns =
-            ["proj_id", "pred_proj_id", "pred_task_id", "task_id"].map(|k| table.field(k));
+        let columns = ["proj_id", "pred_proj_id", "pred_task_id", "task_id"].map(|k| cols.col(k));
         let mut n = 0;
         table.rows.retain(|r| {
             let [proj, pred_proj, pred, succ] =
@@ -2774,7 +2992,13 @@ impl ProjectData {
                 (i, true)
             }
         };
-        let mut w = RowWriter { table, row, fresh };
+        let mut cols = table.field_index();
+        let mut w = RowWriter {
+            table,
+            cols: &mut cols,
+            row,
+            fresh,
+        };
         w.put("proj_id", |v| num(v) == pid, || pid.to_string());
         for (k, value, default) in [
             ("sched_retained_logic", o.retained_logic, true),
@@ -3324,15 +3548,20 @@ fn leveling_inputs(doc: &Document, m: &Model, wbs: &[Wbs]) -> LevelingInputs {
         }
     }
     if let Some(table) = doc.table("TASKACTV") {
+        let cols = table.field_index();
+        let c_proj = cols.col("proj_id");
+        let c_code = cols.col("actv_code_id");
+        let c_task = cols.col("task_id");
+        let c_type = cols.col("actv_code_type_id");
         for row in &table.rows {
-            if num(table.value(row, "proj_id")) != pid {
+            if num(FieldIndex::get(row, c_proj)) != pid {
                 continue;
             }
-            if let Some(value) = code_values.get(&num(table.value(row, "actv_code_id"))) {
+            if let Some(value) = code_values.get(&num(FieldIndex::get(row, c_code))) {
                 out.activity_codes.insert(
                     (
-                        num(table.value(row, "task_id")),
-                        num(table.value(row, "actv_code_type_id")),
+                        num(FieldIndex::get(row, c_task)),
+                        num(FieldIndex::get(row, c_type)),
                     ),
                     value.clone(),
                 );
@@ -3441,15 +3670,21 @@ fn leveling_inputs(doc: &Document, m: &Model, wbs: &[Wbs]) -> LevelingInputs {
     }
     out.selected = selected;
     if let Some(t) = doc.table("TASKRSRC") {
+        let cols = t.field_index();
+        let c_proj = cols.col("proj_id");
+        let c_rsrc = cols.col("rsrc_id");
+        let c_rate = cols.col("remain_qty_per_hr");
+        let c_qty = cols.col("remain_qty");
+        let c_task = cols.col("task_id");
         for r in &t.rows {
-            if num(t.value(r, "proj_id")) != pid {
+            if num(FieldIndex::get(r, c_proj)) != pid {
                 continue;
             }
-            let resource_id = num(t.value(r, "rsrc_id"));
-            let rate = t.value(r, "remain_qty_per_hr").parse::<f64>().unwrap_or(0.);
-            let remaining_units = t.value(r, "remain_qty").parse::<f64>().unwrap_or(0.);
+            let resource_id = num(FieldIndex::get(r, c_rsrc));
+            let rate = FieldIndex::get(r, c_rate).parse::<f64>().unwrap_or(0.);
+            let remaining_units = FieldIndex::get(r, c_qty).parse::<f64>().unwrap_or(0.);
             out.demands
-                .entry(num(t.value(r, "task_id")))
+                .entry(num(FieldIndex::get(r, c_task)))
                 .or_default()
                 .push(ResourceDemand {
                     resource_id,
@@ -3466,12 +3701,18 @@ fn leveling_inputs(doc: &Document, m: &Model, wbs: &[Wbs]) -> LevelingInputs {
     }
     let wbs_index: HashMap<i64, &Wbs> = wbs.iter().map(|w| (w.id, w)).collect();
     if let Some(t) = doc.table("TASK") {
+        let cols = t.field_index();
+        let c_proj = cols.col("proj_id");
+        let c_task = cols.col("task_id");
+        let c_prio = cols.col("priority_type");
+        let c_type = cols.col("task_type");
+        let c_wbs = cols.col("wbs_id");
         for r in &t.rows {
-            if num(t.value(r, "proj_id")) != pid {
+            if num(FieldIndex::get(r, c_proj)) != pid {
                 continue;
             }
-            let id = num(t.value(r, "task_id"));
-            let priority = match t.value(r, "priority_type") {
+            let id = num(FieldIndex::get(r, c_task));
+            let priority = match FieldIndex::get(r, c_prio) {
                 "PT_Top" => 1,
                 "PT_High" => 2,
                 "PT_Low" => 4,
@@ -3479,11 +3720,11 @@ fn leveling_inputs(doc: &Document, m: &Model, wbs: &[Wbs]) -> LevelingInputs {
                 _ => 3,
             };
             out.activity_priority.insert(id, priority);
-            if t.value(r, "task_type") == "TT_Rsrc" {
+            if FieldIndex::get(r, c_type) == "TT_Rsrc" {
                 out.resource_dependent.insert(id);
             }
             let mut path = vec![];
-            let mut parent = Some(num(t.value(r, "wbs_id")));
+            let mut parent = Some(num(FieldIndex::get(r, c_wbs)));
             let mut seen = std::collections::BTreeSet::new();
             while let Some(key) = parent {
                 if !seen.insert(key) {
@@ -3506,6 +3747,21 @@ fn leveling_inputs(doc: &Document, m: &Model, wbs: &[Wbs]) -> LevelingInputs {
 /// The exact quotient of the two binary floats (as rationals, not rounded
 /// first), rounded half to even to a whole minute.
 fn units_minutes(qty: f64, rate: f64, lag: f64) -> Option<i64> {
+    if !qty.is_finite() || !rate.is_finite() || !lag.is_finite() {
+        return None;
+    }
+    if (qty <= 0. || rate <= 0.) && lag == 0. {
+        return Some(0);
+    }
+    if qty > 0. && rate > 0. {
+        let v = (lag + qty / rate) * 60.;
+        if v.is_finite() && v.abs() < 1.0e9 && (v.fract().abs() - 0.5).abs() > 1.0e-4 {
+            return Some(v.round_ties_even() as i64);
+        }
+    }
+    units_minutes_exact(qty, rate, lag)
+}
+fn units_minutes_exact(qty: f64, rate: f64, lag: f64) -> Option<i64> {
     use num_bigint::BigInt;
     use num_rational::BigRational;
     use num_traits::{Signed, ToPrimitive, Zero};
@@ -3560,17 +3816,33 @@ fn preprocess_units(
             .map(|r| (num(t.value(r, "rsrc_id")), t.value(r, "rsrc_type")))
             .collect()
     });
+    let task_cols = tasks.field_index();
+    let t_proj = task_cols.col("proj_id");
+    let t_id = task_cols.col("task_id");
+    let t_dur = task_cols.col("duration_type");
+    let t_pct = task_cols.col("complete_pct_type");
+    let t_cstr = task_cols.col("cstr_type");
+    let t_susp = task_cols.col("suspend_date");
     let mut task_rows: HashMap<i64, &Vec<String>> = HashMap::new();
     for r in &tasks.rows {
-        if num(tasks.value(r, "proj_id")) == pid {
-            task_rows.entry(num(tasks.value(r, "task_id"))).or_insert(r);
+        if num(FieldIndex::get(r, t_proj)) == pid {
+            task_rows.entry(num(FieldIndex::get(r, t_id))).or_insert(r);
         }
     }
+    let asg_cols = assignments.field_index();
+    let a_proj = asg_cols.col("proj_id");
+    let a_task = asg_cols.col("task_id");
+    let a_flag = asg_cols.col("rollup_dates_flag");
+    let a_type = asg_cols.col("rsrc_type");
+    let a_rsrc = asg_cols.col("rsrc_id");
+    let a_relag = asg_cols.col("relag_drtn_hr_cnt");
+    let a_qty = asg_cols.col("remain_qty");
+    let a_rate = asg_cols.col("remain_qty_per_hr");
     let mut assignment_rows: HashMap<i64, Vec<&Vec<String>>> = HashMap::new();
     for r in &assignments.rows {
-        if num(assignments.value(r, "proj_id")) == pid {
+        if num(FieldIndex::get(r, a_proj)) == pid {
             assignment_rows
-                .entry(num(assignments.value(r, "task_id")))
+                .entry(num(FieldIndex::get(r, a_task)))
                 .or_default()
                 .push(r);
         }
@@ -3582,17 +3854,14 @@ fn preprocess_units(
         let Some(&raw) = task_rows.get(&a.task_id) else {
             continue;
         };
-        let v = |key| tasks.value(raw, key);
+        let dur_type = FieldIndex::get(raw, t_dur);
         let started = a.status == StatusType::InProgress;
         // Fixed Duration and Units: F9 sets a started activity's remaining
         // duration from its driving assignments' remaining units / units per
         // hour, to the whole minute (saved probe 1301b).
-        let units_and_duration = import && v("duration_type") == "DT_FixedDUR2" && started;
+        let units_and_duration = import && dur_type == "DT_FixedDUR2" && started;
         if !units_and_duration
-            && !matches!(
-                v("duration_type"),
-                "DT_FixedDrtn" | "DT_FixedRate" | "DT_FixedQty"
-            )
+            && !matches!(dur_type, "DT_FixedDrtn" | "DT_FixedRate" | "DT_FixedQty")
         {
             continue;
         }
@@ -3602,15 +3871,15 @@ fn preprocess_units(
         let mut work = vec![];
         let mut supported = true;
         for r in assignment_rows.get(&a.task_id).into_iter().flatten() {
-            let value = |key| assignments.value(r, key);
-            let flag = value("rollup_dates_flag");
-            let kind = if value("rsrc_type").is_empty() {
+            let flag = FieldIndex::get(r, a_flag);
+            let rsrc_type = FieldIndex::get(r, a_type);
+            let kind = if rsrc_type.is_empty() {
                 resource_types
-                    .get(&num(value("rsrc_id")))
+                    .get(&num(FieldIndex::get(r, a_rsrc)))
                     .copied()
                     .unwrap_or("")
             } else {
-                value("rsrc_type")
+                rsrc_type
             };
             if !matches!(flag, "Y" | "N") || kind != "RT_Labor" {
                 supported = false;
@@ -3622,10 +3891,10 @@ fn preprocess_units(
             let lag = if started {
                 0.
             } else {
-                value("relag_drtn_hr_cnt").parse::<f64>().unwrap_or(0.)
+                FieldIndex::get(r, a_relag).parse::<f64>().unwrap_or(0.)
             };
-            let qty = value("remain_qty").parse::<f64>().unwrap_or(0.);
-            let rate = value("remain_qty_per_hr").parse::<f64>().unwrap_or(0.);
+            let qty = FieldIndex::get(r, a_qty).parse::<f64>().unwrap_or(0.);
+            let rate = FieldIndex::get(r, a_rate).parse::<f64>().unwrap_or(0.);
             if lag != 0. && rate <= 0. {
                 supported = false;
                 break;
@@ -3643,12 +3912,12 @@ fn preprocess_units(
         let Some(rem) = work.into_iter().max() else {
             continue;
         };
-        let zero_proven = (v("complete_pct_type") == "CP_Drtn"
-            || (started && v("complete_pct_type") == "CP_Units"))
-            && v("cstr_type").is_empty()
+        let pct_type = FieldIndex::get(raw, t_pct);
+        let zero_proven = (pct_type == "CP_Drtn" || (started && pct_type == "CP_Units"))
+            && FieldIndex::get(raw, t_cstr).is_empty()
             && a.cstr2 == CstrType::None
             && a.expect_end.is_none()
-            && v("suspend_date").is_empty()
+            && FieldIndex::get(raw, t_susp).is_empty()
             && a.resume.is_none();
         if rem == 0 && !zero_proven {
             continue;
@@ -3671,6 +3940,19 @@ mod units_tests {
         assert_eq!(units_minutes(20.25, 2., 0.), Some(608));
         assert_eq!(units_minutes(20.75, 2., 0.), Some(622));
         assert_eq!(units_minutes(21.65, 2., 3.), Some(829));
+        for a in 0..100 {
+            for b in 1..25 {
+                let qty = a as f64 * 0.25;
+                let rate = b as f64 * 0.5;
+                for lag in [0., 0.25, 1.5, -0.5] {
+                    assert_eq!(
+                        units_minutes(qty, rate, lag),
+                        units_minutes_exact(qty, rate, lag),
+                        "qty={qty} rate={rate} lag={lag}"
+                    );
+                }
+            }
+        }
     }
     fn with_assignment(status: &str, kind: &str, flag: &str) -> ProjectData {
         let mut doc = starter().document;

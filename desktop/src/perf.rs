@@ -1183,3 +1183,330 @@ fn print_369_pages_are_unchanged() {
         println!("{what}: {} pages identical", plain.pages.len());
     }
 }
+
+fn synthetic_35k_xer() -> String {
+    use std::fmt::Write as _;
+    let mut out = String::with_capacity(16 * 1024 * 1024);
+    out.push_str(
+        "ERMHDR\t25.12\t2026-11-02\tProject\tOpenXER\tOpenXER\tdbxDatabaseNoName\tProject Management\tUSD\n",
+    );
+    out.push_str("%T\tPROJECT\n");
+    out.push_str(
+        "%F\tproj_id\tproj_short_name\tlast_recalc_date\tplan_start_date\tclndr_id\trem_target_link_flag\n",
+    );
+    out.push_str("%R\t1\tPERF35K\t2026-11-02 08:00\t2026-11-02 08:00\t1\tY\n");
+
+    out.push_str("%T\tCALENDAR\n");
+    out.push_str("%F\tclndr_id\tclndr_name\tclndr_data\n");
+    let base_cal =
+        openxer_xer::calendar_data::CalendarData::parse(&openxer_xer::standard_calendar_data())
+            .unwrap();
+    for c in 1..=10 {
+        let mut cal = base_cal.clone();
+        for e in 0..200_i64 {
+            cal.exceptions.insert(46328 + e * 7 + (c - 1), vec![]);
+        }
+        let _ = writeln!(out, "%R\t{c}\tCal-{c}\t{}", cal.serialize());
+    }
+
+    out.push_str("%T\tPROJWBS\n");
+    out.push_str("%F\twbs_id\tproj_id\tparent_wbs_id\twbs_short_name\twbs_name\tseq_num\n");
+    out.push_str("%R\t1\t1\t\tP35K\tSynthetic 35k Root\t1\n");
+    for id in 2..=10 {
+        let _ = writeln!(out, "%R\t{id}\t1\t1\tL1.{id}\tArea {id}\t{id}");
+    }
+    for id in 11..=100 {
+        let parent = 2 + ((id - 11) % 9);
+        let _ = writeln!(out, "%R\t{id}\t1\t{parent}\tL2.{id}\tZone {id}\t{id}");
+    }
+    for id in 101..=500 {
+        let parent = 11 + ((id - 101) % 90);
+        let _ = writeln!(
+            out,
+            "%R\t{id}\t1\t{parent}\tWBS-{id}\tWork Package {id}\t{id}"
+        );
+    }
+
+    out.push_str("%T\tRSRC\n");
+    out.push_str("%F\trsrc_id\tclndr_id\trsrc_short_name\trsrc_name\trsrc_type\tdef_qty_per_hr\n");
+    for r in 1..=20 {
+        let cal = 1 + ((r - 1) % 10);
+        let _ = writeln!(out, "%R\t{r}\t{cal}\tR-{r:02}\tResource {r}\tRT_Labor\t8");
+    }
+
+    out.push_str("%T\tTASK\n");
+    out.push_str(
+        "%F\ttask_id\tproj_id\twbs_id\tclndr_id\ttask_code\ttask_name\ttask_type\tstatus_code\tduration_type\tremain_drtn_hr_cnt\ttarget_drtn_hr_cnt\trsrc_id\n",
+    );
+    const N_ACT: usize = 35_000;
+    for i in 0..N_ACT {
+        let task_id = 1000 + i;
+        let wbs_id = 101 + (i * 400 / N_ACT);
+        let clndr_id = 1 + (i % 10);
+        let rsrc_id = 1 + (i % 20);
+        let (ttype, hrs) = if i % 40 == 0 {
+            ("TT_Mile", 0)
+        } else if i % 40 == 39 {
+            ("TT_FinMile", 0)
+        } else {
+            ("TT_Task", ((i % 10) + 1) * 8)
+        };
+        let _ = writeln!(
+            out,
+            "%R\t{task_id}\t1\t{wbs_id}\t{clndr_id}\tA{i:05}\tSynthetic activity {i} scale item\t{ttype}\tTK_NotStart\tDT_FixedDUR2\t{hrs}\t{hrs}\t{rsrc_id}"
+        );
+    }
+
+    out.push_str("%T\tTASKPRED\n");
+    out.push_str(
+        "%F\ttask_pred_id\tproj_id\tpred_proj_id\tpred_task_id\ttask_id\tpred_type\tlag_hr_cnt\n",
+    );
+    let mut link_id = 1usize;
+    for i in 0..N_ACT {
+        if i + 1 < N_ACT {
+            let p = 1000 + i;
+            let s = 1001 + i;
+            let _ = writeln!(out, "%R\t{link_id}\t1\t1\t{p}\t{s}\tPR_FS\t0");
+            link_id += 1;
+        }
+        if i % 2 == 0 && i + 3 < N_ACT {
+            let p = 1000 + i;
+            let s = 1003 + i;
+            let _ = writeln!(out, "%R\t{link_id}\t1\t1\t{p}\t{s}\tPR_SS\t8");
+            link_id += 1;
+        }
+        if i % 3 == 0 && i + 5 < N_ACT {
+            let p = 1000 + i;
+            let s = 1005 + i;
+            let _ = writeln!(out, "%R\t{link_id}\t1\t1\t{p}\t{s}\tPR_FS\t0");
+            link_id += 1;
+        }
+        if i % 15 == 0 && i + 5_000 < N_ACT {
+            let p = 1000 + i;
+            let s = 1000 + i + 5_000;
+            let _ = writeln!(out, "%R\t{link_id}\t1\t1\t{p}\t{s}\tPR_FS\t0");
+            link_id += 1;
+        }
+    }
+    for hub in [1_000usize, 8_000, 15_000, 22_000, 29_000] {
+        let hub_id = 1000 + hub;
+        for off in 6..506 {
+            let pred_id = 1000 + hub - off;
+            let _ = writeln!(out, "%R\t{link_id}\t1\t1\t{pred_id}\t{hub_id}\tPR_FS\t0");
+            link_id += 1;
+            let succ_id = 1000 + hub + off;
+            let _ = writeln!(out, "%R\t{link_id}\t1\t1\t{hub_id}\t{succ_id}\tPR_FS\t0");
+            link_id += 1;
+        }
+    }
+
+    out.push_str("%T\tTASKRSRC\n");
+    out.push_str("%F\ttaskrsrc_id\ttask_id\tproj_id\trsrc_id\tremain_qty\ttarget_qty\tremain_qty_per_hr\ttarget_qty_per_hr\trollup_dates_flag\trsrc_type\n");
+    let mut tr_id = 1usize;
+    for i in 0..N_ACT {
+        let task_id = 1000 + i;
+        let r1 = 1 + (i % 20);
+        let _ = writeln!(
+            out,
+            "%R\t{tr_id}\t{task_id}\t1\t{r1}\t40\t40\t1\t1\tY\tRT_Labor"
+        );
+        tr_id += 1;
+        if i % 2 == 0 {
+            let r2 = 1 + ((i + 7) % 20);
+            let _ = writeln!(
+                out,
+                "%R\t{tr_id}\t{task_id}\t1\t{r2}\t24\t24\t1\t1\tY\tRT_Labor"
+            );
+            tr_id += 1;
+        }
+    }
+    out.push_str("%E\n");
+    out
+}
+
+#[test]
+#[ignore = "release-build 35k-activity benchmark"]
+fn perf_35k() {
+    if cfg!(debug_assertions) {
+        println!("NOTE: debug build; numbers are not representative (use --release)");
+    }
+    let mut report = serde_json::Map::new();
+    let mut frame_rows: Vec<(String, Stats)> = vec![];
+    let mut ops: Vec<(String, f64)> = vec![];
+    let mut memory: Vec<(String, (f64, f64))> = vec![("start".into(), memory_mb())];
+
+    let xer_text = synthetic_35k_xer();
+    let mut parsed: Option<ProjectData> = None;
+    let import_ms = once(|| {
+        let doc = Document::parse(&xer_text).unwrap();
+        let pid = doc.projects()[0].0;
+        parsed = Some(ProjectData::from_document(doc, pid, "Synthetic 35k".into()).unwrap());
+    });
+    let mut project = parsed.unwrap();
+    assert_eq!(project.model.activities.len(), 35_000);
+    assert!(project.model.links.len() >= 60_000);
+    ops.push(("Import XER (parse + ProjectData, 35k)".into(), import_ms));
+    memory.push(("after import".into(), memory_mb()));
+
+    let cpm_ms = once(|| {
+        schedule_model(&mut project.model, &project.resources).unwrap();
+    });
+    ops.push(("Engine CPM only (35k)".into(), cpm_ms));
+
+    let mut d = Driver::new("perf-35k", project);
+    d.home();
+    let n = 30;
+    let mut add = |name: &str, s: Stats| {
+        println!(
+            "{name:<48} median {:>7.2} ms  p95 {:>7.2} ms  max {:>7.2} ms",
+            s.median, s.p95, s.max
+        );
+        frame_rows.push((name.into(), s));
+    };
+
+    d.app.gantt.options.show_relationships = true;
+    d.frames(3);
+    add("35k idle (links ON)", idle(&mut d, n));
+    add("35k scroll down (links ON)", scrolling(&mut d, n, true));
+    add("35k scroll up (links ON)", scrolling(&mut d, n, false));
+
+    d.app.gantt.options.show_relationships = false;
+    d.frames(3);
+    add("35k idle (links OFF)", idle(&mut d, n));
+    add("35k scroll down (links OFF)", scrolling(&mut d, n, true));
+    d.app.gantt.options.show_relationships = true;
+    scroll_to(&mut d, 0);
+
+    let wbs_levels = d.app.grid.layout.group_sort.levels.clone();
+    let group_status = after(&mut d, |d| {
+        d.app.grid.layout.group_sort.levels = vec![grid::layout::GroupLevel {
+            column: "activity_status".into(),
+            to_level: None,
+            indent: true,
+            interval: String::new(),
+        }];
+        d.app.drop_frame_cache();
+    });
+    ops.push((
+        "Group by Activity Status (slowest frame)".into(),
+        group_status,
+    ));
+
+    let group_start = after(&mut d, |d| {
+        d.app.grid.layout.group_sort.levels = vec![grid::layout::GroupLevel {
+            column: "start".into(),
+            to_level: None,
+            indent: true,
+            interval: "Month".into(),
+        }];
+        d.app.drop_frame_cache();
+    });
+    ops.push(("Group by Start Month (slowest frame)".into(), group_start));
+
+    d.app.grid.layout.group_sort.levels = wbs_levels;
+    d.app.drop_frame_cache();
+    d.frames(2);
+    memory.push(("after grouping".into(), memory_mb()));
+
+    let mut edit_ms = vec![];
+    for k in 0..10 {
+        let i = d.visible_activities()[k];
+        let started = Instant::now();
+        assert!(d
+            .app
+            .apply_cell(i, "activity_name", &format!("Edit 35k {k}")));
+        d.app.history.record(
+            &d.app.project,
+            d.app.records_revision,
+            None,
+            200. + k as f64,
+        );
+        edit_ms.push(ms(started.elapsed()));
+    }
+    ops.push(("Single edit + undo record (first)".into(), edit_ms[0]));
+    ops.push((
+        "Edit + undo record (median of 10)".into(),
+        stats(edit_ms).median,
+    ));
+    let ctx = d.ctx.clone();
+    ops.push((
+        "Undo 10 steps".into(),
+        once(|| {
+            for _ in 0..10 {
+                d.app.history_move(&ctx, false);
+            }
+        }),
+    ));
+    ops.push((
+        "Redo 10 steps".into(),
+        once(|| {
+            for _ in 0..10 {
+                d.app.history_move(&ctx, true);
+            }
+        }),
+    ));
+    memory.push(("after 10 edits + undo/redo".into(), memory_mb()));
+
+    ops.push(("F9 schedule_now (35k)".into(), once(|| d.app.schedule())));
+    assert!(d.app.error.is_none(), "{:?}", d.app.error);
+
+    ops.push((
+        "updated_document().text() (35k)".into(),
+        once(|| {
+            let text = d.app.project.updated_document().text();
+            assert!(!text.is_empty());
+        }),
+    ));
+    memory.push(("end".into(), memory_mb()));
+
+    println!();
+    for (name, v) in &ops {
+        println!("{name:<48} {v:>9.1} ms");
+    }
+    for (name, (ws, private)) in &memory {
+        println!("memory {name:<30} working set {ws:>7.1} MB  private {private:>7.1} MB");
+    }
+
+    report.insert(
+        "frames".into(),
+        serde_json::json!(frame_rows
+            .iter()
+            .map(|(n, s)| serde_json::json!({
+                "name": n,
+                "median_ms": s.median,
+                "p95_ms": s.p95,
+                "max_ms": s.max,
+                "frames": s.frames
+            }))
+            .collect::<Vec<_>>()),
+    );
+    report.insert(
+        "operations".into(),
+        serde_json::json!(ops
+            .iter()
+            .map(|(n, v)| serde_json::json!({"name": n, "ms": v}))
+            .collect::<Vec<_>>()),
+    );
+    report.insert(
+        "memory".into(),
+        serde_json::json!(memory
+            .iter()
+            .map(|(n, (w, p))| serde_json::json!({
+                "point": n,
+                "working_set_mb": w,
+                "private_mb": p
+            }))
+            .collect::<Vec<_>>()),
+    );
+    let out = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("artifacts");
+    std::fs::create_dir_all(&out).unwrap();
+    let name = std::env::var("OPENXER_PERF_35K_OUT").unwrap_or_else(|_| "perf-35k.json".into());
+    std::fs::write(
+        out.join(name),
+        serde_json::to_string_pretty(&report).unwrap(),
+    )
+    .unwrap();
+}

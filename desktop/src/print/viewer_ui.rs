@@ -290,10 +290,7 @@ pub fn text_button(
     enabled: bool,
     selected: bool,
 ) -> bool {
-    let r = ui.add_enabled(
-        enabled,
-        egui::Button::new(RichText::new(label).font(chrome::ui_font())).selected(selected),
-    );
+    let r = crate::dialog_kit::toolbar_button(ui, label, enabled, selected);
     actions.push((name.into(), r.rect));
     r.clicked()
 }
@@ -485,15 +482,23 @@ pub fn begin(ui: &mut egui::Ui, c: Chrome, host: &mut HostButtons) -> Frame {
         (None, Fit::Page) => "Fit Page".to_string(),
         (Some(_), _) => format!("{:.0}%", zoom_now * 100.),
     };
-    let combo = egui::ComboBox::from_id_salt((p, salt, "zoom_box"))
-        .selected_text(RichText::new(label).font(chrome::ui_font()))
-        .width(84.)
-        .show_ui(&mut bar_ui, |ui| {
-            let mut pick: Option<(Option<f32>, Fit)> = None;
+    let mut pick: Option<(Option<f32>, Fit)> = None;
+    let combo_resp = crate::dialog_kit::flow_combo_with(
+        &mut bar_ui,
+        (p, salt, "zoom_box"),
+        84.,
+        &label,
+        true,
+        |ui| {
             let mut item = |ui: &mut egui::Ui, name: &str, label: &str, on: bool| {
-                let r = ui.selectable_label(on, RichText::new(label).font(chrome::ui_font()));
+                let r = crate::dialog_kit::flow_selectable(ui, on, label, 80.);
                 actions.push((format!("{p}_zoom_{name}"), r.rect));
-                r.clicked()
+                if r.clicked() {
+                    ui.close();
+                    true
+                } else {
+                    false
+                }
             };
             if item(
                 ui,
@@ -517,10 +522,10 @@ pub fn begin(ui: &mut egui::Ui, c: Chrome, host: &mut HostButtons) -> Frame {
                     pick = Some((Some(z), view.fit));
                 }
             }
-            pick
-        });
-    actions.push((format!("{p}_zoom_box"), combo.response.rect));
-    if let Some(Some((z, f))) = combo.inner {
+        },
+    );
+    actions.push((format!("{p}_zoom_box"), combo_resp.rect));
+    if let Some((z, f)) = pick {
         *zoom = z;
         view.fit = f;
     }
@@ -623,15 +628,16 @@ pub fn begin(ui: &mut egui::Ui, c: Chrome, host: &mut HostButtons) -> Frame {
     }
     bar_ui.add_space(8.);
     bar_ui.label(RichText::new("Page").font(chrome::ui_font()));
-    let box_id = egui::Id::new((p, salt, "page_box"));
+    let box_id = bar_ui.make_persistent_id((p, salt, "page_box"));
     if !ctx.memory(|m| m.has_focus(box_id)) {
         view.page_text = (at + 1).min(count).to_string();
     }
-    let edit = bar_ui.add(
-        egui::TextEdit::singleline(&mut view.page_text)
-            .id(box_id)
-            .desired_width(38.)
-            .font(chrome::ui_font()),
+    let edit = crate::dialog_kit::flow_edit(
+        &mut bar_ui,
+        (p, salt, "page_box"),
+        &mut view.page_text,
+        38.,
+        true,
     );
     actions.push((format!("{p}_page_box"), edit.rect));
     if edit.lost_focus() && ctx.input(|i| i.key_pressed(Key::Enter)) {
@@ -659,12 +665,12 @@ pub fn begin(ui: &mut egui::Ui, c: Chrome, host: &mut HostButtons) -> Frame {
         );
         f_ui.spacing_mut().item_spacing = Vec2::new(4., 0.);
         f_ui.label(RichText::new("Find").font(chrome::ui_font()));
-        let id = egui::Id::new((p, salt, "find_text"));
-        let edit = f_ui.add(
-            egui::TextEdit::singleline(&mut view.find.query)
-                .id(id)
-                .desired_width(220.)
-                .font(chrome::ui_font()),
+        let edit = crate::dialog_kit::flow_edit(
+            &mut f_ui,
+            (p, salt, "find_text"),
+            &mut view.find.query,
+            220.,
+            true,
         );
         actions.push((format!("{p}_find_text"), edit.rect));
         if std::mem::take(&mut view.find.focus) {

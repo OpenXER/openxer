@@ -182,20 +182,21 @@ pub(crate) fn parse_number(text: &str) -> Option<f64> {
 fn value_editor(
     ui: &mut egui::Ui,
     value: f64,
-    speed: f64,
+    _speed: f64,
     show: impl Fn(f64) -> String + 'static,
     parse: impl Fn(&str) -> Option<f64> + 'static,
 ) -> Option<f64> {
     editor_cell(ui);
-    let mut v = value;
-    let response = ui.add(
-        egui::DragValue::new(&mut v)
-            .range(0.0..=1.0e9)
-            .speed(speed)
-            .custom_formatter(move |v, _| show(v))
-            .custom_parser(parse),
-    );
-    (response.changed() && (v - value).abs() > 1e-9).then_some(v)
+    let w = ui.available_width().max(24.);
+    crate::dialog_kit::flow_parsed_number(
+        ui,
+        ui.next_auto_id(),
+        value,
+        w,
+        show,
+        move |t| parse(t).map(|v| v.clamp(0.0, 1.0e9)),
+        true,
+    )
 }
 
 /// The Curve picker's note on an activity whose duration type ignores
@@ -341,19 +342,32 @@ impl App {
                 match (c, sel) {
                     (0, true) if !resources.is_empty() => {
                         editor_cell(ui);
-                        egui::ComboBox::from_id_salt(("assignment_resource", row))
-                            .selected_text(id_name(&resources, v.rsrc_id))
-                            .width(ui.available_width())
-                            .show_ui(ui, |ui| {
+                        let w = ui.available_width();
+                        crate::dialog_kit::flow_combo_with(
+                            ui,
+                            ("assignment_resource", row),
+                            w,
+                            &id_name(&resources, v.rsrc_id),
+                            true,
+                            |ui| {
                                 for (id, cells) in &resources {
                                     let text = format!("{}  {}", cells[0], cells[1]);
-                                    if ui.selectable_label(v.rsrc_id == Some(*id), text).clicked()
-                                        && v.rsrc_id != Some(*id)
+                                    if crate::dialog_kit::flow_selectable(
+                                        ui,
+                                        v.rsrc_id == Some(*id),
+                                        &text,
+                                        w - 4.,
+                                    )
+                                    .clicked()
                                     {
-                                        replace = Some((row, *id));
+                                        if v.rsrc_id != Some(*id) {
+                                            replace = Some((row, *id));
+                                        }
+                                        ui.close();
                                     }
                                 }
-                            });
+                            },
+                        );
                     }
                     (0, _) => cell(ui, id_name(&resources, v.rsrc_id)),
                     // A price that comes from the resource opens no editor,
@@ -368,18 +382,32 @@ impl App {
                     (1, _) => cell(ui, format::cost(v.price)),
                     (2, true) => {
                         editor_cell(ui);
-                        egui::ComboBox::from_id_salt(("assignment_rate_type", row))
-                            .selected_text(rate_label)
-                            .width(ui.available_width())
-                            .show_ui(ui, |ui| {
+                        let w = ui.available_width();
+                        crate::dialog_kit::flow_combo_with(
+                            ui,
+                            ("assignment_rate_type", row),
+                            w,
+                            rate_label,
+                            true,
+                            |ui| {
                                 for (code, label, _) in RATE_TYPES {
-                                    if ui.selectable_label(v.rate_type == code, label).clicked()
-                                        && v.rate_type != code
+                                    if crate::dialog_kit::flow_selectable(
+                                        ui,
+                                        v.rate_type == code,
+                                        label,
+                                        w - 4.,
+                                    )
+                                    .clicked()
                                     {
-                                        edits.push((row, AssignmentEdit::RateType(code.into())));
+                                        if v.rate_type != code {
+                                            edits
+                                                .push((row, AssignmentEdit::RateType(code.into())));
+                                        }
+                                        ui.close();
                                     }
                                 }
-                            });
+                            },
+                        );
                     }
                     (2, false) => cell(ui, rate_label),
                     (3, true) => {
@@ -388,18 +416,34 @@ impl App {
                             .iter()
                             .find(|(code, _)| *code == v.rate_source)
                             .map_or("", |(_, l)| l);
-                        egui::ComboBox::from_id_salt(("assignment_rate_source", row))
-                            .selected_text(label)
-                            .width(ui.available_width())
-                            .show_ui(ui, |ui| {
+                        let w = ui.available_width();
+                        crate::dialog_kit::flow_combo_with(
+                            ui,
+                            ("assignment_rate_source", row),
+                            w,
+                            label,
+                            true,
+                            |ui| {
                                 for (code, label) in RATE_SOURCES {
-                                    if ui.selectable_label(v.rate_source == code, label).clicked()
-                                        && v.rate_source != code
+                                    if crate::dialog_kit::flow_selectable(
+                                        ui,
+                                        v.rate_source == code,
+                                        label,
+                                        w - 4.,
+                                    )
+                                    .clicked()
                                     {
-                                        edits.push((row, AssignmentEdit::RateSource(code.into())));
+                                        if v.rate_source != code {
+                                            edits.push((
+                                                row,
+                                                AssignmentEdit::RateSource(code.into()),
+                                            ));
+                                        }
+                                        ui.close();
                                     }
                                 }
-                            });
+                            },
+                        );
                     }
                     (3, _) => cell(
                         ui,
@@ -410,8 +454,7 @@ impl App {
                     ),
                     (4, _) => {
                         let mut on = v.primary;
-                        if ui
-                            .add_enabled(v.rsrc_id.is_some(), egui::Checkbox::without_text(&mut on))
+                        if crate::dialog_kit::flow_checkbox(ui, &mut on, "", v.rsrc_id.is_some())
                             .changed()
                         {
                             primary = Some((row, on));
@@ -456,47 +499,92 @@ impl App {
                     (8, _) => cell(ui, format::units_per_time(v.remaining.per_hour)),
                     (9, true) if !roles.is_empty() => {
                         editor_cell(ui);
-                        egui::ComboBox::from_id_salt(("assignment_role", row))
-                            .selected_text(id_name(&roles, v.role_id))
-                            .width(ui.available_width())
-                            .show_ui(ui, |ui| {
+                        let w = ui.available_width();
+                        crate::dialog_kit::flow_combo_with(
+                            ui,
+                            ("assignment_role", row),
+                            w,
+                            &id_name(&roles, v.role_id),
+                            true,
+                            |ui| {
                                 if v.rsrc_id.is_some()
-                                    && ui.selectable_label(v.role_id.is_none(), "").clicked()
-                                    && v.role_id.is_some()
+                                    && crate::dialog_kit::flow_selectable(
+                                        ui,
+                                        v.role_id.is_none(),
+                                        "",
+                                        w - 4.,
+                                    )
+                                    .clicked()
                                 {
-                                    edits.push((row, AssignmentEdit::Role(None)));
+                                    if v.role_id.is_some() {
+                                        edits.push((row, AssignmentEdit::Role(None)));
+                                    }
+                                    ui.close();
                                 }
                                 for (id, cells) in &roles {
                                     let text = format!("{}  {}", cells[0], cells[1]);
-                                    if ui.selectable_label(v.role_id == Some(*id), text).clicked()
-                                        && v.role_id != Some(*id)
+                                    if crate::dialog_kit::flow_selectable(
+                                        ui,
+                                        v.role_id == Some(*id),
+                                        &text,
+                                        w - 4.,
+                                    )
+                                    .clicked()
                                     {
-                                        edits.push((row, AssignmentEdit::Role(Some(*id))));
+                                        if v.role_id != Some(*id) {
+                                            edits.push((row, AssignmentEdit::Role(Some(*id))));
+                                        }
+                                        ui.close();
                                     }
                                 }
-                            });
+                            },
+                        );
                     }
                     (9, _) => cell(ui, id_name(&roles, v.role_id)),
                     (10, true) if !accounts.is_empty() => {
                         editor_cell(ui);
-                        egui::ComboBox::from_id_salt(("assignment_account", row))
-                            .selected_text(id_name(&accounts, v.acct_id))
-                            .width(ui.available_width())
-                            .show_ui(ui, |ui| {
-                                if ui.selectable_label(v.acct_id.is_none(), "").clicked()
-                                    && v.acct_id.is_some()
+                        let w = ui.available_width();
+                        crate::dialog_kit::flow_combo_with(
+                            ui,
+                            ("assignment_account", row),
+                            w,
+                            &id_name(&accounts, v.acct_id),
+                            true,
+                            |ui| {
+                                if crate::dialog_kit::flow_selectable(
+                                    ui,
+                                    v.acct_id.is_none(),
+                                    "",
+                                    w - 4.,
+                                )
+                                .clicked()
                                 {
-                                    edits.push((row, AssignmentEdit::CostAccount(None)));
+                                    if v.acct_id.is_some() {
+                                        edits.push((row, AssignmentEdit::CostAccount(None)));
+                                    }
+                                    ui.close();
                                 }
                                 for (id, cells) in &accounts {
                                     let text = format!("{}  {}", cells[0], cells[1]);
-                                    if ui.selectable_label(v.acct_id == Some(*id), text).clicked()
-                                        && v.acct_id != Some(*id)
+                                    if crate::dialog_kit::flow_selectable(
+                                        ui,
+                                        v.acct_id == Some(*id),
+                                        &text,
+                                        w - 4.,
+                                    )
+                                    .clicked()
                                     {
-                                        edits.push((row, AssignmentEdit::CostAccount(Some(*id))));
+                                        if v.acct_id != Some(*id) {
+                                            edits.push((
+                                                row,
+                                                AssignmentEdit::CostAccount(Some(*id)),
+                                            ));
+                                        }
+                                        ui.close();
                                     }
                                 }
-                            });
+                            },
+                        );
                     }
                     (10, _) => cell(ui, id_name(&accounts, v.acct_id)),
                     (11, true) => {
@@ -535,7 +623,7 @@ impl App {
                     (13, _) => cell(ui, format::duration(v.remaining_duration, periods)),
                     (14, _) => {
                         let mut on = v.drives_dates;
-                        if ui.add(egui::Checkbox::without_text(&mut on)).changed() {
+                        if crate::dialog_kit::flow_checkbox(ui, &mut on, "", true).changed() {
                             edits.push((row, AssignmentEdit::DriveActivityDates(on)));
                         }
                     }
@@ -687,7 +775,7 @@ impl App {
                     }
                     (36, _) => {
                         let mut on = v.cost_linked;
-                        if ui.add(egui::Checkbox::without_text(&mut on)).changed() {
+                        if crate::dialog_kit::flow_checkbox(ui, &mut on, "", true).changed() {
                             // Unticking needs no answer; ticking it again
                             // recalculates the costs, so it asks first.
                             if on {
@@ -717,27 +805,43 @@ impl App {
                         let current = &curve_names[r];
                         if sel && !curves.is_empty() {
                             editor_cell(ui);
-                            let picker = egui::ComboBox::from_id_salt(("assignment_curve", row))
-                                .selected_text(current.as_str())
-                                .width(ui.available_width())
-                                .show_ui(ui, |ui| {
-                                    if ui.selectable_label(current.is_empty(), "").clicked()
-                                        && !current.is_empty()
+                            let w = ui.available_width();
+                            let resp = crate::dialog_kit::flow_combo_with(
+                                ui,
+                                ("assignment_curve", row),
+                                w,
+                                current.as_str(),
+                                true,
+                                |ui| {
+                                    if crate::dialog_kit::flow_selectable(
+                                        ui,
+                                        current.is_empty(),
+                                        "",
+                                        w - 4.,
+                                    )
+                                    .clicked()
                                     {
-                                        curve_edit = Some((row, None));
+                                        if !current.is_empty() {
+                                            curve_edit = Some((row, None));
+                                        }
+                                        ui.close();
                                     }
                                     for (n, points, _) in &curves {
                                         let on = current == n;
-                                        let item = ui
-                                            .selectable_label(on, n)
-                                            .on_hover_ui(|ui| curve_preview(ui, points));
-                                        if item.clicked() && !on {
-                                            curve_edit = Some((row, Some(n.clone())));
+                                        let item =
+                                            crate::dialog_kit::flow_selectable(ui, on, n, w - 4.)
+                                                .on_hover_ui(|ui| curve_preview(ui, points));
+                                        if item.clicked() {
+                                            if !on {
+                                                curve_edit = Some((row, Some(n.clone())));
+                                            }
+                                            ui.close();
                                         }
                                     }
-                                });
+                                },
+                            );
                             if !curve_applies {
-                                picker.response.on_hover_text(CURVE_IGNORED);
+                                resp.on_hover_text(CURVE_IGNORED);
                             }
                         } else {
                             cell(ui, current.clone());
@@ -1183,7 +1287,7 @@ impl App {
             if let AssignPicker::Resource { query, .. } = &mut picker {
                 ui.horizontal(|ui| {
                     ui.label("Search");
-                    ui.add(egui::TextEdit::singleline(query).desired_width(220.));
+                    crate::dialog_kit::flow_edit(ui, "rsrc_picker_query", query, 220., true);
                 });
             }
             if targets.len() > 1 {
@@ -1231,10 +1335,12 @@ impl App {
             if let Some((code, name)) = new_resource.as_mut() {
                 ui.horizontal(|ui| {
                     ui.label("Resource ID");
-                    let response = ui.add(egui::TextEdit::singleline(code).desired_width(64.));
+                    let response =
+                        crate::dialog_kit::flow_edit(ui, "rsrc_picker_new_id", code, 64., true);
                     app.action("rsrc_picker_new_id", &response);
                     ui.label("Name");
-                    let response = ui.add(egui::TextEdit::singleline(name).desired_width(118.));
+                    let response =
+                        crate::dialog_kit::flow_edit(ui, "rsrc_picker_new_name", name, 118., true);
                     app.action("rsrc_picker_new_name", &response);
                     let button = crate::chrome::dialog_button(
                         ui,

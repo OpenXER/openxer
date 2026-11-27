@@ -1,7 +1,12 @@
 //! The per-activity CPM rules: relationship dates, lags, constraints, boundary
 //! adjustments and float. Each rule carries an ID that `engine/RULES.md`
 //! explains with its test and evidence.
-use crate::{calendar::CalendarAdapter, model::*, options::*, scheduler::Scheduler};
+use crate::{
+    calendar::{CalRef, CalendarAdapter},
+    model::*,
+    options::*,
+    scheduler::Scheduler,
+};
 impl Scheduler<'_> {
     /// REL-1: a milestone has only one date, so a tie into or out of one uses
     /// the end it has (a start milestone's start, a finish milestone's finish).
@@ -42,6 +47,15 @@ impl Scheduler<'_> {
             LagCalendar::ProjCal => &self.model.calendars[self.model.project_calendar],
         }
     }
+    pub(crate) fn lag_cal_ref(&self, r: usize) -> CalRef<'_> {
+        let l = &self.model.links[r];
+        match self.model.options.lag_calendar {
+            LagCalendar::SuccCal => self.cal_ref(l.succ),
+            LagCalendar::Hour24 => CalRef::new(&self.cal24.cal, &self.cal24_index),
+            LagCalendar::PredCal => self.cal_ref(l.pred),
+            LagCalendar::ProjCal => self.cal_by_index(self.model.project_calendar),
+        }
+    }
     /// REL-3 to REL-5: the forward date a tie gives its successor: the
     /// predecessor's remaining start or finish plus the lag on the lag
     /// calendar. A started predecessor's start lag, and a completed
@@ -74,7 +88,7 @@ impl Scheduler<'_> {
             }
             return Some(base);
         }
-        let cal = self.lag_calendar(r);
+        let cal = self.lag_cal_ref(r);
         let dd = self.data_date_of(l.pred)?;
         // REL-3: a positive lag ends on a finish moment of the lag calendar;
         // the successor's own calendar then places its start, and a completed
@@ -124,7 +138,7 @@ impl Scheduler<'_> {
         if lag == 0 {
             return date;
         }
-        let cal = self.lag_calendar(r);
+        let cal = self.lag_cal_ref(r);
         let dep = self.get_logical_dep_type(r);
         let dd = self.data_date_of(l.pred).unwrap_or(0);
         if !self.model.options.neither_oos() && dep == LinkType::SS && lag > 0 {
@@ -158,7 +172,7 @@ impl Scheduler<'_> {
         let (Some(from), Some(dd)) = (p.act_finish, self.data_date_of(l.pred)) else {
             return date;
         };
-        let cal = self.lag_calendar(r);
+        let cal = self.lag_cal_ref(r);
         let left = (l.lag - cal.between(from, dd).max(0)).max(0);
         if left == 0 {
             date
@@ -208,7 +222,7 @@ impl Scheduler<'_> {
                 return (None, None);
             };
             let lag = self.model.links[r].lag;
-            let cal = self.lag_calendar(r);
+            let cal = self.lag_cal_ref(r);
             match lag {
                 0 => base,
                 l if l > 0 => cal.add(base, l),
@@ -265,7 +279,7 @@ impl Scheduler<'_> {
                 if self.model.options.finish_on_valid_time
                     && ((dep == LinkType::FF && lag < 0) || (dep == LinkType::SF && lag <= 0))
                 {
-                    let cal = self.scheduling_cal(i);
+                    let cal = self.scheduling_cal_ref(i);
                     if re == cal.snap_start(re.div_euclid(1440) * 1440) {
                         re = cal.snap_finish(re);
                     }
@@ -458,14 +472,14 @@ impl Scheduler<'_> {
             .filter(|a| a.rollup)
             .map(|a| match self.clock_hours(i, a, a.remain_lag) {
                 Some(h) => self.clock_shift(reend, -h),
-                None => self.scheduling_cal(i).sub(reend, a.rem + a.remain_lag),
+                None => self.scheduling_cal_ref(i).sub(reend, a.rem + a.remain_lag),
             })
             .min()
             .unwrap_or_else(|| {
                 if t.rem == 0 {
                     reend
                 } else {
-                    self.scheduling_cal(i).sub(reend, t.rem)
+                    self.scheduling_cal_ref(i).sub(reend, t.rem)
                 }
             })
     }
@@ -479,14 +493,14 @@ impl Scheduler<'_> {
             .filter(|a| a.rollup)
             .map(|a| match self.clock_hours(i, a, a.relag) {
                 Some(h) => self.clock_shift(restart, h),
-                None => self.scheduling_cal(i).add(restart, a.rem + a.relag),
+                None => self.scheduling_cal_ref(i).add(restart, a.rem + a.relag),
             })
             .max()
             .unwrap_or_else(|| {
                 if t.rem == 0 {
                     restart
                 } else {
-                    self.scheduling_cal(i).add(restart, t.rem)
+                    self.scheduling_cal_ref(i).add(restart, t.rem)
                 }
             })
     }
@@ -535,7 +549,7 @@ impl Scheduler<'_> {
         let (mut rs, re) = if t.rem == 0 {
             let rs = if t.task_type == TaskType::Mile && (rs_drive.is_some() || cstr_date.is_some())
             {
-                self.scheduling_cal(i).snap_start(es)
+                self.scheduling_cal_ref(i).snap_start(es)
             } else if t.task_type == TaskType::FinMile && !t.is_completed() {
                 self.edge_adjust_early_reend(i, es)
             } else {
@@ -543,8 +557,8 @@ impl Scheduler<'_> {
             };
             (rs, rs)
         } else {
-            let rs = self.scheduling_cal(i).snap_start(es);
-            (rs, self.scheduling_cal(i).add(rs, t.rem))
+            let rs = self.scheduling_cal_ref(i).snap_start(es);
+            (rs, self.scheduling_cal_ref(i).add(rs, t.rem))
         };
         self.model.activities[i].restart = Some(rs);
         self.model.activities[i].reend = Some(re);
@@ -572,7 +586,7 @@ impl Scheduler<'_> {
             )
         {
             if let Some(rs) = t.restart {
-                let start = self.scheduling_cal(i).snap_start(rs);
+                let start = self.scheduling_cal_ref(i).snap_start(rs);
                 if start != rs {
                     let re = if t.task_type == TaskType::Mile {
                         start
@@ -622,7 +636,7 @@ impl Scheduler<'_> {
             if t.rem == 0 {
                 e
             } else {
-                self.scheduling_cal(i).sub(e, t.rem)
+                self.scheduling_cal_ref(i).sub(e, t.rem)
             }
         });
         self.model.activities[i].reend = end;
@@ -651,7 +665,7 @@ impl Scheduler<'_> {
         {
             return;
         }
-        let cal = self.scheduling_cal(i);
+        let cal = self.scheduling_cal_ref(i);
         if cal.between(t.reend.unwrap(), limit) == 0 {
             let moved = if self.model.options.finish_on_valid_time
                 && limit == cal.snap_start(limit.div_euclid(1440) * 1440)
@@ -682,7 +696,7 @@ impl Scheduler<'_> {
         let Some(restart) = self.model.activities[i].restart else {
             return;
         };
-        if restart > limit && self.scheduling_cal(i).between(limit, restart) == 0 {
+        if restart > limit && self.scheduling_cal_ref(i).between(limit, restart) == 0 {
             self.model.activities[i].restart = Some(limit);
         }
     }
@@ -718,12 +732,12 @@ impl Scheduler<'_> {
             };
             let ends: Vec<i64> = parts
                 .iter()
-                .map(|&(c, _)| cals[c].snap_finish(end))
+                .map(|&(c, _)| self.cal_by_index(c).snap_finish(end))
                 .collect();
             let rs = parts
                 .iter()
                 .zip(&ends)
-                .map(|(&(c, d), &f)| cals[c].sub(f, d))
+                .map(|(&(c, d), &f)| self.cal_by_index(c).sub(f, d))
                 .min();
             (rs, ends.iter().copied().max())
         } else {
@@ -732,15 +746,16 @@ impl Scheduler<'_> {
             };
             let starts: Vec<i64> = parts
                 .iter()
-                .map(|&(c, _)| cals[c].snap_start(start))
+                .map(|&(c, _)| self.cal_by_index(c).snap_start(start))
                 .collect();
             let re = parts
                 .iter()
                 .zip(&starts)
-                .map(|(&(c, d), &s)| cals[c].add(s, d))
+                .map(|(&(c, d), &s)| self.cal_by_index(c).add(s, d))
                 .max();
             (starts.iter().copied().min(), re)
         };
+        let _ = cals;
         self.model.activities[i].restart = rs;
         self.model.activities[i].reend = re;
     }
@@ -748,8 +763,9 @@ impl Scheduler<'_> {
     /// working time (a finish at a shift's close stays); otherwise it moves on
     /// to the next working start.
     pub fn edge_adjust_early_reend(&self, i: usize, d: i64) -> i64 {
-        if !self.scheduling_cal(i).is_work(d - 1) {
-            self.scheduling_cal(i).snap_start(d)
+        let cal = self.scheduling_cal_ref(i);
+        if !cal.is_work(d - 1) {
+            cal.snap_start(d)
         } else {
             d
         }
@@ -760,7 +776,7 @@ impl Scheduler<'_> {
         if self.model.activities[i].task_type == TaskType::FinMile {
             self.edge_adjust_early_reend(i, d)
         } else {
-            self.scheduling_cal(i).snap_start(d)
+            self.scheduling_cal_ref(i).snap_start(d)
         }
     }
     /// EDGE-1, EDGE-2: a late finish moment is the previous working finish; a
@@ -769,14 +785,15 @@ impl Scheduler<'_> {
         if self.model.activities[i].task_type == TaskType::Mile {
             self.edge_adjust_late_restart(i, d)
         } else {
-            self.scheduling_cal(i).snap_finish(d)
+            self.scheduling_cal_ref(i).snap_finish(d)
         }
     }
     /// EDGE-1: a late start moment stays when it is working time, otherwise it
     /// is the previous working finish.
     pub fn edge_adjust_late_restart(&self, i: usize, d: i64) -> i64 {
-        if !self.scheduling_cal(i).is_work(d) {
-            self.scheduling_cal(i).snap_finish(d)
+        let cal = self.scheduling_cal_ref(i);
+        if !cal.is_work(d) {
+            cal.snap_finish(d)
         } else {
             d
         }
@@ -888,9 +905,9 @@ impl Scheduler<'_> {
         // EXP-2: an Expected Finish is a finish moment: one at a shift's start
         // or in nonworking time rolls back to the previous working finish
         // (saved probe 402).
-        let e = self.scheduling_cal(i).snap_finish(e);
+        let e = self.scheduling_cal_ref(i).snap_finish(e);
         if e > s {
-            let rem = self.cal(i).between(s, e);
+            let rem = self.cal_ref(i).between(s, e);
             let t = &mut self.model.activities[i];
             t.reend = Some(e);
             t.rem = rem;
@@ -915,7 +932,7 @@ impl Scheduler<'_> {
             // PASS-1: a summary's ties are dropped both ways, so it has no
             // successor: free float runs to the project finish (probe 601).
             return match (t.early_finish, self.scd_end_of(i)) {
-                (Some(e), Some(p)) => self.cal(i).between(e, p),
+                (Some(e), Some(p)) => self.cal_ref(i).between(e, p),
                 _ => 0,
             };
         }
@@ -954,7 +971,7 @@ impl Scheduler<'_> {
                 continue;
             };
             let opt = &self.model.options;
-            let lc = self.lag_calendar(r);
+            let lc = self.lag_cal_ref(r);
             let dd = self.data_date_of(i).unwrap_or(0);
             // FLT-2: a started activity's SS/SF ties count the lag as the
             // forward pass does (corpus 5772; saved probes 302, 303).
@@ -983,7 +1000,7 @@ impl Scheduler<'_> {
                     if lag != 0 {
                         tgt = lc.start_at(lc.work_at(tgt) - lag);
                     }
-                    self.cal(i).between(src, tgt).max(0)
+                    self.cal_ref(i).between(src, tgt).max(0)
                 }
             };
             if best.is_none_or(|v| ff < v) {
@@ -991,7 +1008,7 @@ impl Scheduler<'_> {
             }
         }
         best.unwrap_or_else(|| match (t.early_finish, self.scd_end_of(i)) {
-            (Some(e), Some(p)) => self.cal(i).between(e, p),
+            (Some(e), Some(p)) => self.cal_ref(i).between(e, p),
             _ => 0,
         })
     }
@@ -1020,6 +1037,16 @@ impl Scheduler<'_> {
             return Some(false);
         }
         Some(drive)
+    }
+    /// Driving flags for every relationship in the model, reusing one leveled
+    /// calendar build when leveling is enabled.
+    pub fn relationship_driving_all(&self) -> Vec<Option<bool>> {
+        if self.model.options.do_level {
+            return crate::features::relationship_driving_all_leveled(self);
+        }
+        (0..self.model.links.len())
+            .map(|r| self.relationship_driving(r))
+            .collect()
     }
     /// FLT-5: a tie is replaced by the progress of its ends: FS by an actual
     /// finish of the predecessor or an actual start of the successor, FF by
@@ -1063,6 +1090,9 @@ impl Scheduler<'_> {
                 return (value, value == 0);
             }
         }
+        self.relationship_float_and_flag_base(r)
+    }
+    pub(crate) fn relationship_float_and_flag_base(&self, r: usize) -> (i64, bool) {
         let opt = &self.model.options;
         let l = &self.model.links[r];
         let p = &self.model.activities[l.pred];
@@ -1101,7 +1131,7 @@ impl Scheduler<'_> {
                 return (0, false);
             };
             if l.lag != 0 {
-                let lc = self.lag_calendar(r);
+                let lc = self.lag_cal_ref(r);
                 base = if l.lag > 0 {
                     lc.add(base, l.lag)
                 } else {
@@ -1116,7 +1146,7 @@ impl Scheduler<'_> {
             let Some(target) = target else {
                 return (0, false);
             };
-            let ff = self.scheduling_cal(l.succ).between(base, target).max(0);
+            let ff = self.scheduling_cal_ref(l.succ).between(base, target).max(0);
             return (ff, ff == 0);
         }
         let retained = opt.retained_logic;
@@ -1140,7 +1170,7 @@ impl Scheduler<'_> {
         let Some(mut candidate) = base.and_then(|b| self.apply_lag_forward_from(r, b)) else {
             return (0, false);
         };
-        let cal = self.scheduling_cal(l.succ);
+        let cal = self.scheduling_cal_ref(l.succ);
         if matches!(dep, LinkType::FF | LinkType::SF) {
             candidate = cal.sub(candidate, s.rem);
         }
@@ -1161,7 +1191,7 @@ impl Scheduler<'_> {
     /// FLT-6: start float: working time from early start to late start.
     pub fn calc_start_float(&self, i: usize) -> Option<i64> {
         let t = &self.model.activities[i];
-        Some(self.cal(i).between(t.early_start?, t.late_start?))
+        Some(self.cal_ref(i).between(t.early_start?, t.late_start?))
     }
     /// FLT-6: finish float: working time from early finish to late finish.
     pub fn calc_finish_float(&self, i: usize) -> Option<i64> {
@@ -1170,7 +1200,7 @@ impl Scheduler<'_> {
         if (self.model.options.neither_oos() || self.model.options.progress_override) && e == l {
             return Some(0);
         }
-        Some(self.cal(i).between(e, l))
+        Some(self.cal_ref(i).between(e, l))
     }
     /// FLT-6: total float by the float type option: start float, finish
     /// float, or the smaller. In Actual Dates and Progress Override modes an

@@ -3,12 +3,12 @@
 //! probe outputs (LVL-1). General LOE shapes and float-path tie breaking have
 //! no independent reference outputs (FEAT-1, FEAT-2 in `engine/RULES.md`).
 use crate::{
-    calendar::{CalendarAdapter, WorkCalendar, DAY},
+    calendar::{CalIndex, CalRef, CalendarAdapter, WorkCalendar, DAY},
     model::*,
     options::LagCalendar,
     scheduler::Scheduler,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 
 #[derive(Clone, Debug)]
 pub struct ResourceDemand {
@@ -53,18 +53,6 @@ pub struct LevelingInputs {
     pub horizon: i64,
     pub unsupported: Vec<String>,
 }
-fn lag_calendar<'a>(
-    m: &'a Model,
-    l: &Link,
-    continuous: &'a CalendarAdapter,
-) -> &'a CalendarAdapter {
-    match m.options.lag_calendar {
-        LagCalendar::PredCal => &m.calendars[m.activities[l.pred].cal],
-        LagCalendar::SuccCal => &m.calendars[m.activities[l.succ].cal],
-        LagCalendar::Hour24 => continuous,
-        LagCalendar::ProjCal => &m.calendars[m.project_calendar],
-    }
-}
 /// FEAT-1: a level-of-effort activity not dated by the base rule (PASS-6)
 /// spans its tied activities' earliest start to latest finish. Its late
 /// dates sit on its own calendar (`tests/loe_rules.rs`). No reference output
@@ -86,7 +74,7 @@ pub(crate) fn additional_loe_dates(sched: &mut Scheduler) {
             continue;
         }
         let dd = sched.data_date_of(i).unwrap_or(0);
-        let c = sched.cal(i);
+        let c = sched.cal_ref(i);
         let es = c.snap_start(dd.max(esv.iter().copied().min().unwrap_or(dd)));
         let ef = es.max(efv.iter().copied().max().unwrap_or(es));
         let limit = sched.late_limit_of(i);
@@ -130,7 +118,6 @@ type PartnerDates<'a> = dyn Fn(&Activity, usize) -> (Option<i64>, Option<i64>) +
 /// partner's early dates come from `early` (the scheduled early dates, or the
 /// leveled dates after leveling); actual dates replace them.
 fn loe_partner_dates(sched: &Scheduler, i: usize, early: &PartnerDates<'_>) -> [Vec<i64>; 4] {
-    let continuous = sched.cal24.clone();
     let t = &sched.model.activities[i];
     let mut esv = vec![];
     let mut efv = vec![];
@@ -155,7 +142,7 @@ fn loe_partner_dates(sched: &Scheduler, i: usize, early: &PartnerDates<'_>) -> [
             } else {
                 matches!(dep, LinkType::FF | LinkType::SF)
             };
-            let c = lag_calendar(sched.model, l, &continuous);
+            let c = sched.lag_cal_ref(ri);
             let (other_start, other_end) = early(other, oi);
             for early in [true, false] {
                 let mut date = match (early, other_finish) {
@@ -189,7 +176,7 @@ fn loe_partner_dates(sched: &Scheduler, i: usize, early: &PartnerDates<'_>) -> [
     }
     [esv, efv, lsv, lfv]
 }
-fn path_score(m: &Model, ri: usize, c24: &CalendarAdapter) -> i64 {
+fn path_score(m: &Model, ri: usize, ranks: &EdgeRanks) -> i64 {
     let l = &m.links[ri];
     let p = &m.activities[l.pred];
     let s = &m.activities[l.succ];
@@ -211,28 +198,15 @@ fn path_score(m: &Model, ri: usize, c24: &CalendarAdapter) -> i64 {
         return 1_i64 << 62;
     };
     if l.lag != 0 {
-        let c = lag_calendar(m, l, c24);
+        let c = ranks.lag_cal(m, l);
         target = c.start_at(c.work_at(target) - l.lag);
     }
-    let v = m.calendars[p.cal].between(src, target);
+    let v = ranks.cal(m, p.cal).between(src, target);
     if m.options.float_paths_use_total {
         v
     } else {
         v.max(0)
     }
-}
-type EdgeKey = (i64, String, i64, String, i64);
-fn edge_key(m: &Model, r: usize, c24: &CalendarAdapter) -> EdgeKey {
-    let l = &m.links[r];
-    let p = &m.activities[l.pred];
-    let s = &m.activities[l.succ];
-    (
-        path_score(m, r, c24),
-        p.task_code.clone(),
-        p.task_id,
-        s.task_code.clone(),
-        s.task_id,
-    )
 }
 /// FEAT-2: the ranking of every relationship for one float-path run, each
 /// worked out once on first use. The ranking reads only dates, lags and IDs,
@@ -241,47 +215,91 @@ fn edge_key(m: &Model, r: usize, c24: &CalendarAdapter) -> EdgeKey {
 /// a run cost paths times relationships calendar evaluations.
 struct EdgeRanks {
     c24: CalendarAdapter,
-    keys: Vec<std::cell::OnceCell<EdgeKey>>,
+    c24_ix: CalIndex,
+    cal_indices: Vec<CalIndex>,
+    scores: Vec<std::cell::OnceCell<i64>>,
 }
 impl EdgeRanks {
     fn new(model: &Model) -> Self {
+        let c24 = CalendarAdapter::new(WorkCalendar::continuous(model.origin_serial));
+        let c24_ix = CalIndex::new(&c24.cal);
+        let cal_indices = model
+            .calendars
+            .iter()
+            .map(|c| CalIndex::new(&c.cal))
+            .collect();
         Self {
-            c24: CalendarAdapter::new(WorkCalendar::continuous(model.origin_serial)),
-            keys: vec![std::cell::OnceCell::new(); model.links.len()],
+            c24,
+            c24_ix,
+            cal_indices,
+            scores: vec![std::cell::OnceCell::new(); model.links.len()],
         }
     }
-    /// Relationship `r`'s ranking in `m`, the model the ranks were made for.
-    fn key(&self, m: &Model, r: usize) -> &EdgeKey {
-        self.keys[r].get_or_init(|| edge_key(m, r, &self.c24))
+    fn cal<'a>(&'a self, m: &'a Model, idx: usize) -> CalRef<'a> {
+        CalRef::new(&m.calendars[idx].cal, &self.cal_indices[idx])
+    }
+    fn lag_cal<'a>(&'a self, m: &'a Model, l: &Link) -> CalRef<'a> {
+        match m.options.lag_calendar {
+            LagCalendar::PredCal => self.cal(m, m.activities[l.pred].cal),
+            LagCalendar::SuccCal => self.cal(m, m.activities[l.succ].cal),
+            LagCalendar::Hour24 => CalRef::new(&self.c24.cal, &self.c24_ix),
+            LagCalendar::ProjCal => self.cal(m, m.project_calendar),
+        }
+    }
+    /// Relationship `r`'s score in `m`, the model the ranks were made for.
+    fn score(&self, m: &Model, r: usize) -> i64 {
+        *self.scores[r].get_or_init(|| path_score(m, r, self))
+    }
+    fn cmp_edges(&self, m: &Model, a: usize, b: usize) -> std::cmp::Ordering {
+        let sa = self.score(m, a);
+        let sb = self.score(m, b);
+        if sa != sb {
+            return sa.cmp(&sb);
+        }
+        let la = &m.links[a];
+        let lb = &m.links[b];
+        let pa = &m.activities[la.pred];
+        let pb = &m.activities[lb.pred];
+        let suc_a = &m.activities[la.succ];
+        let suc_b = &m.activities[lb.succ];
+        pa.task_code
+            .cmp(&pb.task_code)
+            .then_with(|| pa.task_id.cmp(&pb.task_id))
+            .then_with(|| suc_a.task_code.cmp(&suc_b.task_code))
+            .then_with(|| suc_a.task_id.cmp(&suc_b.task_id))
     }
 }
 fn trace_path(
     m: &Model,
     seed: usize,
     back: bool,
-    remaining: &BTreeSet<usize>,
+    remaining: &[bool],
     ranks: &EdgeRanks,
+    seen_epoch: &mut [u32],
+    epoch: u32,
 ) -> Vec<usize> {
     let mut chain = vec![];
-    let mut seen = BTreeSet::new();
     let mut i = seed;
-    while remaining.contains(&i) && seen.insert(i) {
+    while remaining[i] && seen_epoch[i] != epoch {
+        seen_epoch[i] = epoch;
         chain.push(i);
         let links = if back {
             &m.activities[i].preds
         } else {
             &m.activities[i].succs
         };
-        let next = links
-            .iter()
-            .copied()
-            .filter(|&r| {
-                let l = &m.links[r];
-                let n = if back { l.pred } else { l.succ };
-                remaining.contains(&n) && !seen.contains(&n)
-            })
-            .min_by_key(|&r| ranks.key(m, r));
-        let Some(r) = next else {
+        let mut best: Option<usize> = None;
+        for &r in links {
+            let l = &m.links[r];
+            let n = if back { l.pred } else { l.succ };
+            if !remaining[n] || seen_epoch[n] == epoch {
+                continue;
+            }
+            if best.is_none_or(|b| ranks.cmp_edges(m, r, b) == std::cmp::Ordering::Less) {
+                best = Some(r);
+            }
+        }
+        let Some(r) = best else {
             break;
         };
         i = if back {
@@ -306,100 +324,132 @@ pub fn calculate_multiple_float_paths(model: &mut Model) -> Result<(), String> {
     if model.options.max_float_paths == 0 {
         return Err("max_float_paths must be positive".into());
     }
-    let mut nodes: BTreeSet<_> = model
-        .activities
-        .iter()
-        .enumerate()
-        .filter_map(|(i, a)| {
-            (!Scheduler::skip_type(a.task_type)
-                && a.early_start.is_some()
-                && a.early_finish.is_some())
-            .then_some(i)
-        })
-        .collect();
-    if nodes.is_empty() {
+    let n = model.activities.len();
+    let mut remaining = vec![false; n];
+    let mut remaining_count = 0usize;
+    for (i, a) in model.activities.iter().enumerate() {
+        if !Scheduler::skip_type(a.task_type) && a.early_start.is_some() && a.early_finish.is_some()
+        {
+            remaining[i] = true;
+            remaining_count += 1;
+        }
+    }
+    if remaining_count == 0 {
         return Ok(());
     }
     let endpoint = if let Some(id) = model.options.float_paths_end_activity {
         Some(
-            nodes
-                .iter()
-                .copied()
-                .find(|&i| model.activities[i].task_id == id)
+            (0..n)
+                .find(|&i| remaining[i] && model.activities[i].task_id == id)
                 .ok_or("The float-path ending activity is missing or undated")?,
         )
     } else {
         None
     };
     if let Some(end) = endpoint {
-        let mut allowed = BTreeSet::from([end]);
+        let mut allowed = vec![false; n];
+        allowed[end] = true;
+        let mut allowed_count = 1usize;
         let mut stack = vec![end];
         while let Some(i) = stack.pop() {
             for &r in &model.activities[i].preds {
                 let p = model.links[r].pred;
-                if nodes.contains(&p) && allowed.insert(p) {
+                if remaining[p] && !allowed[p] {
+                    allowed[p] = true;
+                    allowed_count += 1;
                     stack.push(p);
                 }
             }
         }
-        nodes = allowed;
+        remaining = allowed;
+        remaining_count = allowed_count;
     }
-    let edges: Vec<_> = model
+    let mut edges: Vec<usize> = model
         .links
         .iter()
         .enumerate()
-        .filter_map(|(r, l)| (nodes.contains(&l.pred) && nodes.contains(&l.succ)).then_some(r))
+        .filter_map(|(r, l)| (remaining[l.pred] && remaining[l.succ]).then_some(r))
         .collect();
     let ranks = EdgeRanks::new(model);
-    let mut remaining = nodes;
+    if model.options.float_paths_use_total {
+        edges.sort_by(|&a, &b| ranks.cmp_edges(model, a, b));
+    }
+    let mut edge_cursor = 0usize;
+    let mut seen_epoch = vec![0u32; n];
+    let mut chain_epoch = vec![0u32; n];
+    let mut epoch = 0u32;
     for path in 1..=model.options.max_float_paths {
-        if remaining.is_empty() {
+        if remaining_count == 0 {
             break;
         }
         let mut chain;
         if model.options.float_paths_use_total {
-            let seed = edges
-                .iter()
-                .copied()
-                .filter(|&r| {
-                    let l = &model.links[r];
-                    remaining.contains(&l.pred) && remaining.contains(&l.succ)
-                })
-                .min_by_key(|&r| ranks.key(model, r));
-            if let Some(r) = seed {
-                let l = &model.links[r];
-                chain = trace_path(model, l.pred, true, &remaining, &ranks);
+            while edge_cursor < edges.len() {
+                let l = &model.links[edges[edge_cursor]];
+                if remaining[l.pred] && remaining[l.succ] {
+                    break;
+                }
+                edge_cursor += 1;
+            }
+            if edge_cursor < edges.len() {
+                let l = &model.links[edges[edge_cursor]];
+                epoch += 1;
+                chain = trace_path(
+                    model,
+                    l.pred,
+                    true,
+                    &remaining,
+                    &ranks,
+                    &mut seen_epoch,
+                    epoch,
+                );
                 chain.reverse();
-                let right = trace_path(model, l.succ, false, &remaining, &ranks);
+                epoch += 1;
+                for &x in &chain {
+                    chain_epoch[x] = epoch;
+                }
+                let right = trace_path(
+                    model,
+                    l.succ,
+                    false,
+                    &remaining,
+                    &ranks,
+                    &mut seen_epoch,
+                    epoch,
+                );
                 for i in right {
-                    if !chain.contains(&i) {
+                    if chain_epoch[i] != epoch {
+                        chain_epoch[i] = epoch;
                         chain.push(i);
                     }
                 }
             } else {
-                let i = remaining
-                    .iter()
-                    .copied()
-                    .min_by_key(|&i| {
-                        let t = &model.activities[i];
-                        (
-                            t.total_float.unwrap_or(1_i64 << 62),
-                            t.task_code.clone(),
-                            t.task_id,
-                        )
+                let i = (0..n)
+                    .filter(|&i| remaining[i])
+                    .min_by(|&a, &b| {
+                        let ta = &model.activities[a];
+                        let tb = &model.activities[b];
+                        ta.total_float
+                            .unwrap_or(1_i64 << 62)
+                            .cmp(&tb.total_float.unwrap_or(1_i64 << 62))
+                            .then_with(|| ta.task_code.cmp(&tb.task_code))
+                            .then_with(|| ta.task_id.cmp(&tb.task_id))
                     })
                     .ok_or("No float-path candidate")?;
                 chain = vec![i];
             }
         } else {
-            let boundary = edges
-                .iter()
-                .copied()
-                .filter(|&r| {
-                    let l = &model.links[r];
-                    remaining.contains(&l.pred) && !remaining.contains(&l.succ)
-                })
-                .min_by_key(|&r| ranks.key(model, r));
+            let mut boundary: Option<usize> = None;
+            for &r in &edges {
+                let l = &model.links[r];
+                if remaining[l.pred]
+                    && !remaining[l.succ]
+                    && boundary
+                        .is_none_or(|b| ranks.cmp_edges(model, r, b) == std::cmp::Ordering::Less)
+                {
+                    boundary = Some(r);
+                }
+            }
             let seed = if path == 1 {
                 endpoint
             } else {
@@ -407,19 +457,35 @@ pub fn calculate_multiple_float_paths(model: &mut Model) -> Result<(), String> {
             };
             let seed = seed
                 .or_else(|| {
-                    remaining.iter().copied().min_by_key(|&i| {
-                        let t = &model.activities[i];
-                        (-t.early_finish.unwrap_or(0), t.task_code.clone(), t.task_id)
+                    (0..n).filter(|&i| remaining[i]).min_by(|&a, &b| {
+                        let ta = &model.activities[a];
+                        let tb = &model.activities[b];
+                        (-ta.early_finish.unwrap_or(0))
+                            .cmp(&(-tb.early_finish.unwrap_or(0)))
+                            .then_with(|| ta.task_code.cmp(&tb.task_code))
+                            .then_with(|| ta.task_id.cmp(&tb.task_id))
                     })
                 })
                 .ok_or("No float-path candidate")?;
-            chain = trace_path(model, seed, true, &remaining, &ranks);
+            epoch += 1;
+            chain = trace_path(
+                model,
+                seed,
+                true,
+                &remaining,
+                &ranks,
+                &mut seen_epoch,
+                epoch,
+            );
             chain.reverse();
         }
         for (order, i) in chain.into_iter().enumerate() {
             model.activities[i].float_path = path as i64;
             model.activities[i].float_path_order = order as i64 + 1;
-            remaining.remove(&i);
+            if remaining[i] {
+                remaining[i] = false;
+                remaining_count -= 1;
+            }
         }
     }
     Ok(())
@@ -444,9 +510,9 @@ pub fn activity_paths(
     if count == 0 {
         return Err("The path count must be positive".into());
     }
-    let mut m = model.clone();
-    m.rebuild_links()?;
     if !forward {
+        let mut m = model.clone();
+        m.rebuild_links()?;
         m.options.multiple_float_paths = true;
         m.options.float_paths_end_activity = Some(m.activities[seed].task_id);
         m.options.max_float_paths = count;
@@ -467,48 +533,88 @@ pub fn activity_paths(
             .collect());
     }
     let dated = |i: usize| {
-        let a = &m.activities[i];
+        let a = &model.activities[i];
         !Scheduler::skip_type(a.task_type) && a.early_start.is_some() && a.early_finish.is_some()
     };
     if !dated(seed) {
         return Err("The selected activity has no scheduled dates".into());
     }
+    let n = model.activities.len();
+    let mut succs: Vec<Vec<usize>> = vec![vec![]; n];
+    for (r, l) in model.links.iter().enumerate() {
+        if l.pred >= n || l.succ >= n {
+            return Err(format!("Link {r} references a missing activity"));
+        }
+        succs[l.pred].push(r);
+    }
     // The seed and every dated activity it leads to.
-    let mut remaining = BTreeSet::from([seed]);
+    let mut remaining = vec![false; n];
+    remaining[seed] = true;
+    let mut remaining_count = 1usize;
     let mut stack = vec![seed];
     while let Some(i) = stack.pop() {
-        for &r in &m.activities[i].succs {
-            let s = m.links[r].succ;
-            if dated(s) && remaining.insert(s) {
+        for &r in &succs[i] {
+            let s = model.links[r].succ;
+            if dated(s) && !remaining[s] {
+                remaining[s] = true;
+                remaining_count += 1;
                 stack.push(s);
             }
         }
     }
-    let ranks = EdgeRanks::new(&m);
-    let mut done = BTreeSet::new();
+    let ranks = EdgeRanks::new(model);
+    let mut done = vec![false; n];
     let mut paths = vec![];
-    while paths.len() < count && !remaining.is_empty() {
+    let mut seen_epoch = vec![0u32; n];
+    let mut epoch = 0u32;
+    while paths.len() < count && remaining_count > 0 {
         // Path 1 starts at the seed; later paths branch off the paths
         // already taken through their most critical relationship.
         let start = if paths.is_empty() {
             seed
         } else {
-            let branch = m
-                .links
-                .iter()
-                .enumerate()
-                .filter(|(_, l)| done.contains(&l.pred) && remaining.contains(&l.succ))
-                .map(|(r, _)| r)
-                .min_by_key(|&r| ranks.key(&m, r));
+            let mut branch: Option<usize> = None;
+            for (r, l) in model.links.iter().enumerate() {
+                if done[l.pred]
+                    && remaining[l.succ]
+                    && branch
+                        .is_none_or(|b| ranks.cmp_edges(model, r, b) == std::cmp::Ordering::Less)
+                {
+                    branch = Some(r);
+                }
+            }
             match branch {
-                Some(r) => m.links[r].succ,
+                Some(r) => model.links[r].succ,
                 None => break,
             }
         };
-        let chain = trace_path(&m, start, false, &remaining, &ranks);
+        epoch += 1;
+        let mut chain = vec![];
+        let mut cur = start;
+        while remaining[cur] && seen_epoch[cur] != epoch {
+            seen_epoch[cur] = epoch;
+            chain.push(cur);
+            let mut best: Option<usize> = None;
+            for &r in &succs[cur] {
+                let next_node = model.links[r].succ;
+                if !remaining[next_node] || seen_epoch[next_node] == epoch {
+                    continue;
+                }
+                if best.is_none_or(|b| ranks.cmp_edges(model, r, b) == std::cmp::Ordering::Less) {
+                    best = Some(r);
+                }
+            }
+            let Some(r) = best else {
+                break;
+            };
+            cur = model.links[r].succ;
+        }
         for &i in &chain {
-            remaining.remove(&i);
-            done.insert(i);
+            if remaining[i] {
+                remaining[i] = false;
+                remaining_count -= 1;
+            }
+            done[i] = true;
         }
         paths.push(chain);
     }
@@ -527,6 +633,14 @@ struct LevelCalendar {
     horizon: i64,
 }
 impl LevelCalendar {
+    fn empty(horizon: i64) -> Self {
+        Self {
+            s: vec![],
+            e: vec![],
+            cum: vec![0],
+            horizon,
+        }
+    }
     fn new(c: &CalendarAdapter, horizon: i64) -> Self {
         let mut raw = vec![];
         for d in -2..(horizon.div_euclid(DAY) + 3) {
@@ -644,7 +758,7 @@ impl LevelCalendar {
 #[derive(Clone, Debug)]
 struct Profile {
     limits: BTreeMap<i64, f64>,
-    usage: BTreeMap<i64, f64>,
+    levels: BTreeMap<i64, f64>,
 }
 impl Profile {
     fn capacity(&self, t: i64) -> f64 {
@@ -655,7 +769,7 @@ impl Profile {
         }
     }
     fn used(&self, t: i64) -> f64 {
-        self.usage.range(..=t).map(|(_, v)| v).sum()
+        self.levels.range(..=t).next_back().map_or(0.0, |(_, &v)| v)
     }
     fn fits(&self, t: i64, rate: f64) -> bool {
         self.used(t) + rate <= self.capacity(t) + 1e-9
@@ -668,7 +782,7 @@ impl Profile {
             .map(|(&t, _)| t)
             .into_iter()
             .chain(
-                self.usage
+                self.levels
                     .range((Excluded(t), Unbounded))
                     .next()
                     .map(|(&t, _)| t),
@@ -687,10 +801,28 @@ impl Profile {
         }
         None
     }
+    fn prune_knot(&mut self, t: i64) {
+        if let Some(&val) = self.levels.get(&t) {
+            let prev = self.levels.range(..t).next_back().map_or(0.0, |(_, &v)| v);
+            if (val - prev).abs() <= 1e-12 {
+                self.levels.remove(&t);
+            }
+        }
+    }
     fn book(&mut self, c: &LevelCalendar, s: i64, f: i64, rate: f64) {
         for (a, b) in c.intervals(s.max(0), f) {
-            *self.usage.entry(a).or_insert(0.0) += rate;
-            *self.usage.entry(b).or_insert(0.0) -= rate;
+            if a >= b {
+                continue;
+            }
+            let va = self.used(a);
+            let vb = self.used(b);
+            self.levels.entry(a).or_insert(va);
+            self.levels.entry(b).or_insert(vb);
+            for (_, v) in self.levels.range_mut(a..b) {
+                *v += rate;
+            }
+            self.prune_knot(a);
+            self.prune_knot(b);
         }
     }
 }
@@ -714,7 +846,7 @@ fn first_room(
                 if !p.fits(t, rate) {
                     conflict = true;
                     let event = p.next_event(t)?;
-                    next = Some(next.map_or(event, |x: i64| x.min(event)));
+                    next = Some(next.map_or(event, |x: i64| x.max(event)));
                 }
             }
         }
@@ -960,14 +1092,14 @@ fn compare_ready(m: &Model, inputs: &LevelingInputs, a: usize, b: usize) -> std:
             PriorityField::Wbs => inputs
                 .wbs_paths
                 .get(&aa.task_id)
-                .cloned()
-                .unwrap_or_default()
+                .map(Vec::as_slice)
+                .unwrap_or(&[])
                 .cmp(
-                    &inputs
+                    inputs
                         .wbs_paths
                         .get(&bb.task_id)
-                        .cloned()
-                        .unwrap_or_default(),
+                        .map(Vec::as_slice)
+                        .unwrap_or(&[]),
                 ),
             PriorityField::ActivityCode(code) => {
                 let av = inputs.activity_codes.get(&(aa.task_id, code));
@@ -1100,7 +1232,8 @@ fn place_task(
         t = next.unwrap_or(s);
         // LVL-3: no later slot can keep the float either, so the activity
         // stays where logic puts it and the over-allocation remains.
-        if !float_allows(c, limit, c.add(t, dur).max(lo_f.unwrap_or(0))) {
+        let placed_end = c.add(t, dur);
+        if !float_allows(c, limit, placed_end.max(lo_f.unwrap_or(placed_end))) {
             held.push(a.task_id);
             t = s;
             f = c.add(t, dur);
@@ -1147,6 +1280,7 @@ fn place_resource_dependent(
     let mut t = s;
     let mut result = dates(t);
     let mut blocked = false;
+    let mut settled = false;
     for _ in 0..100000 {
         result = dates(t);
         if result.iter().any(|&(_, f)| f >= horizon) {
@@ -1155,7 +1289,7 @@ fn place_resource_dependent(
         // LVL-3: a delay that no longer keeps the float is not made.
         if t > s {
             let end = result.iter().map(|&(_, f)| f).max().unwrap_or(t);
-            if !float_allows(float.0, float.1, end.max(lo_f.unwrap_or(0))) {
+            if !float_allows(float.0, float.1, end.max(lo_f.unwrap_or(end))) {
                 blocked = true;
                 result = dates(s);
                 break;
@@ -1185,13 +1319,18 @@ fn place_resource_dependent(
         }
         if impossible {
             result = dates(s);
+            settled = true;
             break;
         }
         if let Some(nt) = next {
             t = nt;
         } else {
+            settled = true;
             break;
         }
+    }
+    if !settled && !blocked {
+        result = dates(s);
     }
     for (d, &(x, f)) in rd.iter().zip(&result) {
         if let Some(p) = profiles.get_mut(&d.resource_id) {
@@ -1290,10 +1429,33 @@ pub fn level_resources_report(
             }
         }
     }
+    let mut used_cal = vec![false; model.calendars.len()];
+    if model.project_calendar < used_cal.len() {
+        used_cal[model.project_calendar] = true;
+    }
+    for a in &model.activities {
+        if a.cal < used_cal.len() {
+            used_cal[a.cal] = true;
+        }
+    }
+    for ds in inputs.demands.values() {
+        for c in ds.iter().filter_map(|d| d.calendar) {
+            if c < used_cal.len() {
+                used_cal[c] = true;
+            }
+        }
+    }
     let cals: Vec<_> = model
         .calendars
         .iter()
-        .map(|c| LevelCalendar::new(c, horizon))
+        .enumerate()
+        .map(|(i, c)| {
+            if used_cal[i] {
+                LevelCalendar::new(c, horizon)
+            } else {
+                LevelCalendar::empty(horizon)
+            }
+        })
         .collect();
     let c24 = LevelCalendar::new(
         &CalendarAdapter::new(WorkCalendar::continuous(model.origin_serial)),
@@ -1310,7 +1472,7 @@ pub fn level_resources_report(
                 r,
                 Profile {
                     limits: rows.into_iter().collect(),
-                    usage: BTreeMap::new(),
+                    levels: BTreeMap::new(),
                 },
             )
         })
@@ -1334,17 +1496,41 @@ pub fn level_resources_report(
             )
         })
         .collect();
-    let mut ready: Vec<_> = degrees
+    struct ReadyEntry<'a> {
+        model: &'a Model,
+        inputs: &'a LevelingInputs,
+        idx: usize,
+    }
+    impl PartialEq for ReadyEntry<'_> {
+        fn eq(&self, other: &Self) -> bool {
+            self.idx == other.idx
+        }
+    }
+    impl Eq for ReadyEntry<'_> {}
+    impl Ord for ReadyEntry<'_> {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            // BinaryHeap pops the max element, so reverse compare_ready to pop the best.
+            compare_ready(self.model, self.inputs, other.idx, self.idx)
+        }
+    }
+    impl PartialOrd for ReadyEntry<'_> {
+        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+    let mut ready: BinaryHeap<ReadyEntry<'_>> = degrees
         .iter()
-        .filter_map(|(&i, &n)| (n == 0).then_some(i))
+        .filter_map(|(&i, &n)| {
+            (n == 0).then_some(ReadyEntry {
+                model,
+                inputs,
+                idx: i,
+            })
+        })
         .collect();
     let mut dates = BTreeMap::new();
     let mut held = vec![];
-    while !ready.is_empty() {
-        let pos = (0..ready.len())
-            .min_by(|&a, &b| compare_ready(model, inputs, ready[a], ready[b]))
-            .ok_or("Missing leveling candidate")?;
-        let i = ready.remove(pos);
+    while let Some(ReadyEntry { idx: i, .. }) = ready.pop() {
         let (s, lo_f) = level_earliest(model, i, &cals, &c24, &dates)?;
         let pair = place_task(
             model,
@@ -1362,7 +1548,11 @@ pub fn level_resources_report(
             if let Some(n) = degrees.get_mut(&s) {
                 *n -= 1;
                 if *n == 0 {
-                    ready.push(s);
+                    ready.push(ReadyEntry {
+                        model,
+                        inputs,
+                        idx: s,
+                    });
                 }
             }
         }
@@ -1622,6 +1812,31 @@ pub fn relationship_driving_leveled(model: &Model, ri: usize) -> Option<bool> {
     let (cals, c24) = (built.0.as_slice(), &built.1);
     let gap = level_relationship_gap(model, ri, cals, c24)?;
     Some(gap <= 0 && level_driving_allowed(model, ri, cals))
+}
+pub(crate) fn relationship_driving_all_leveled(sched: &Scheduler<'_>) -> Vec<Option<bool>> {
+    let model = &*sched.model;
+    let built = float_calendars(model);
+    let (cals, c24) = (built.0.as_slice(), &built.1);
+    (0..model.links.len())
+        .map(|r| {
+            let l = &model.links[r];
+            let p = &model.activities[l.pred];
+            let s = &model.activities[l.succ];
+            if p.task_type == TaskType::Wbs || s.task_type == TaskType::Wbs {
+                return Some(false);
+            }
+            if !p.is_completed() && !s.is_completed() {
+                if let Some(gap) = level_relationship_gap(model, r, cals, c24) {
+                    return Some(gap <= 0 && level_driving_allowed(model, r, cals));
+                }
+            }
+            let (_, drive) = sched.relationship_float_and_flag_base(r);
+            if s.uses_mandatory_constraint() {
+                return Some(false);
+            }
+            Some(drive)
+        })
+        .collect()
 }
 /// The leveled longest path ends at the latest EARLY finish, and traces the
 /// leveled driving ties, including zero-gap chains through completed work.

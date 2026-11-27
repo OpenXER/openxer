@@ -239,8 +239,8 @@ pub(super) struct GanttFrame {
     pub(super) chart: Rect,
     pub(super) body: Rect,
     pub(super) axis: TimeScale,
-    pub(super) calendars: BTreeMap<usize, CalendarSpans>,
-    pub(super) shade_cells: BTreeMap<usize, Vec<TimeSpan>>,
+    pub(super) calendars: std::rc::Rc<BTreeMap<usize, CalendarSpans>>,
+    pub(super) shade_cells: std::rc::Rc<BTreeMap<usize, Vec<TimeSpan>>>,
     /// Vertical sight lines: x and whether the line is a major line.
     pub(super) sight_x: Vec<(f32, bool)>,
     /// The table's column lookups for this frame: bars, labels and lines
@@ -538,7 +538,7 @@ impl App {
         ui: &mut egui::Ui,
         ctx: &egui::Context,
         chart: Rect,
-        rows: &[Row],
+        _rows: &[Row],
     ) -> GanttFrame {
         // The table's width is fractional; the chart starts on a whole pixel
         // so every line and bar lands on pixel columns.
@@ -604,41 +604,61 @@ impl App {
             .collect();
         let cal_start = intervals.first().map_or(self.timeline_origin, |c| c.0);
         let cal_finish = intervals.last().map_or(last.ceil() as i64, |c| c.1);
-        let calendar_ids: BTreeSet<_> = rows
-            .iter()
-            .filter_map(|row| {
-                if let Row::Activity(i) = row {
-                    Some(self.shown().model.activities[*i].cal)
-                } else {
-                    None
-                }
-            })
-            .chain(std::iter::once(self.shown().model.project_calendar))
-            .collect();
-        let calendars: BTreeMap<_, _> = calendar_ids
-            .into_iter()
-            .map(|i| {
-                (
-                    i,
-                    CalendarSpans::new(&self.shown().model.calendars[i].cal, cal_start, cal_finish),
-                )
-            })
-            .collect();
         let shade = self.gantt.options.nonwork.shade;
-        let lowest = bands[count - 1].unit;
-        let shade_cells: BTreeMap<_, _> = calendars
-            .iter()
-            .map(|(&i, spans)| {
-                (
-                    i,
-                    if shade {
-                        spans.nonwork_cells(&intervals, lowest == Unit::Hour)
-                    } else {
-                        vec![]
-                    },
-                )
-            })
-            .collect();
+        let lowest_hour = bands[count - 1].unit == Unit::Hour;
+        let serial = self.shown_serial();
+        let cal_key = serial.map(|serial| dialogs::GanttCalKey {
+            serial,
+            cal_start,
+            cal_finish,
+            lowest_hour,
+            shade,
+        });
+        let (calendars, shade_cells) = match (cal_key, &self.gantt_ui.cal_cache) {
+            (Some(key), Some(c)) if c.key == key => (c.calendars.clone(), c.shade_cells.clone()),
+            _ => {
+                let model = &self.shown().model;
+                let mut used = vec![false; model.calendars.len()];
+                if let Some(slot) = used.get_mut(model.project_calendar) {
+                    *slot = true;
+                }
+                for a in &model.activities {
+                    if let Some(slot) = used.get_mut(a.cal) {
+                        *slot = true;
+                    }
+                }
+                let calendars: BTreeMap<_, _> = used
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(_, keep)| *keep)
+                    .map(|(i, _)| {
+                        (
+                            i,
+                            CalendarSpans::new(&model.calendars[i].cal, cal_start, cal_finish),
+                        )
+                    })
+                    .collect();
+                let mut shade_map = BTreeMap::new();
+                if shade {
+                    if let Some(spans) = calendars.get(&model.project_calendar) {
+                        shade_map.insert(
+                            model.project_calendar,
+                            spans.nonwork_cells(&intervals, lowest_hour),
+                        );
+                    }
+                }
+                let calendars = std::rc::Rc::new(calendars);
+                let shade_cells = std::rc::Rc::new(shade_map);
+                if let Some(key) = cal_key {
+                    self.gantt_ui.cal_cache = Some(dialogs::GanttCalCache {
+                        key,
+                        calendars: calendars.clone(),
+                        shade_cells: shade_cells.clone(),
+                    });
+                }
+                (calendars, shade_cells)
+            }
+        };
         let t = &self.gantt.timescale;
         let font = if t.font_bold {
             FontId::new(t.font_points * 96. / 72., chrome::bold_font().family)
@@ -1583,34 +1603,34 @@ impl App {
 
     /// Driving flags for every relationship, recomputed only when dates or
     /// links change.
-    fn relationship_driving(&mut self) -> Vec<Option<bool>> {
-        use std::hash::{Hash, Hasher};
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        for a in &self.shown().model.activities {
-            (
-                a.early_start,
-                a.early_finish,
-                a.total_float,
-                a.act_start,
-                a.act_finish,
-            )
-                .hash(&mut hasher);
-        }
-        for l in &self.shown().model.links {
-            (l.pred, l.succ, l.link_type.as_str(), l.lag).hash(&mut hasher);
-        }
-        let key = hasher.finish();
+    fn relationship_driving(&mut self) -> std::rc::Rc<Vec<Option<bool>>> {
+        let key = if let Some(serial) = self.shown_serial() {
+            dialogs::DrivingKey::Serial(serial)
+        } else {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            for a in &self.shown().model.activities {
+                (
+                    a.early_start,
+                    a.early_finish,
+                    a.total_float,
+                    a.act_start,
+                    a.act_finish,
+                )
+                    .hash(&mut hasher);
+            }
+            for l in &self.shown().model.links {
+                (l.pred, l.succ, l.link_type.as_str(), l.lag).hash(&mut hasher);
+            }
+            dialogs::DrivingKey::Hash(hasher.finish())
+        };
         if self.gantt_ui.driving_key != Some(key) {
-            let links: Vec<usize> = (0..self.shown().model.links.len()).collect();
             let model = match self.open_set.composite.as_mut() {
                 Some(c) => &mut c.project.model,
                 None => &mut self.project.model,
             };
             let scheduler = openxer_engine::scheduler::Scheduler::new(model);
-            self.gantt_ui.driving = links
-                .iter()
-                .map(|&r| scheduler.relationship_driving(r))
-                .collect();
+            self.gantt_ui.driving = std::rc::Rc::new(scheduler.relationship_driving_all());
             self.gantt_ui.driving_key = Some(key);
         }
         self.gantt_ui.driving.clone()
@@ -1708,7 +1728,7 @@ impl App {
         // Every table row in order, when the rows are the scrolled table's
         // (`grid.row_offsets` and `grid.body_top` place them): relationship
         // lines then also reach bars scrolled or panned out of view.
-        rows: Option<&[Row]>,
+        rows: Option<&std::rc::Rc<Vec<Row>>>,
     ) {
         let axis = &gantt.axis;
         let ppd = self.pixels_per_day;
@@ -1802,27 +1822,28 @@ impl App {
             for (at, b) in geometry.iter().enumerate() {
                 first_bar.entry(b.activity).or_insert(at);
             }
-            // Row of each activity in the table, built the first time a
-            // line needs an end that is not painted this frame.
-            let row_of: std::cell::OnceCell<std::collections::HashMap<usize, usize>> =
-                std::cell::OnceCell::new();
+            let row_of = rows.map(|r| self.shown_row_of(r));
+            let serial = self.shown_serial();
+            let candidates = self.visible_link_indices(
+                rows,
+                serial,
+                row_of.as_deref().map(Vec::as_slice),
+                clip,
+                options.collapsed_relationships,
+            );
             let unpainted = |activity: usize| -> Option<BarGeometry> {
-                let rows = rows?;
-                let row_of = row_of.get_or_init(|| {
-                    rows.iter()
-                        .enumerate()
-                        .filter_map(|(k, r)| match *r {
-                            Row::Activity(i) => Some((i, k)),
-                            Row::Group(_) => None,
-                        })
-                        .collect()
-                });
-                let k = *row_of.get(&activity)?;
+                let row_of = row_of.as_ref()?;
+                let k = (*row_of.get(activity)?)?;
                 let top = self.grid.body_top + self.grid.row_offsets.get(k)?;
                 let height = self.grid.row_offsets.get(k + 1)? - self.grid.row_offsets[k];
                 offscreen_geometry(self.shown(), axis, activity, top, height, clip)
             };
-            for (index, link) in self.shown().model.links.iter().enumerate() {
+            let batch_mesh = rows.is_some() && !paint::is_compact_dashes();
+            let mut rel_mesh = batch_mesh.then(egui::Mesh::default);
+            let paint_link = |index: usize,
+                              link: &openxer_engine::model::Link,
+                              drawn: &mut Vec<(usize, Vec<Pos2>)>,
+                              rel_mesh: &mut Option<egui::Mesh>| {
                 let pred = first_bar
                     .get(&link.pred)
                     .map(|&at| geometry[at])
@@ -1874,23 +1895,63 @@ impl App {
                     } else {
                         LineStyle::Solid
                     };
-                    paint::pixel_path(&painter, &path, color, style);
-                    if self
+                    let is_loop = self
                         .loops
                         .view
                         .as_ref()
-                        .is_some_and(|v| v.links.contains(&(link.pred, link.succ)))
-                    {
-                        let heavy: Vec<(f32, f32)> =
-                            path.iter().map(|&(x, y)| (x + 1., y + 1.)).collect();
-                        let red = Color32::from_rgb(200, 0, 0);
-                        paint::pixel_path(&painter, &path, red, LineStyle::Solid);
-                        paint::pixel_path(&painter, &heavy, red, LineStyle::Solid);
-                    }
-                    if let Some(&(tip_x, tip_y)) = path.last() {
-                        paint::spans(&painter, &paint::arrowhead(tip_x, tip_y, to_start), color);
+                        .is_some_and(|v| v.links.contains(&(link.pred, link.succ)));
+                    if let Some(mesh) = rel_mesh.as_mut() {
+                        paint::pixel_path_into(mesh, &path, color, style);
+                        if is_loop {
+                            let heavy: Vec<(f32, f32)> =
+                                path.iter().map(|&(x, y)| (x + 1., y + 1.)).collect();
+                            let red = Color32::from_rgb(200, 0, 0);
+                            paint::pixel_path_into(mesh, &path, red, LineStyle::Solid);
+                            paint::pixel_path_into(mesh, &heavy, red, LineStyle::Solid);
+                        }
+                        if let Some(&(tip_x, tip_y)) = path.last() {
+                            paint::spans_into(
+                                mesh,
+                                &paint::arrowhead(tip_x, tip_y, to_start),
+                                color,
+                            );
+                        }
+                    } else {
+                        paint::pixel_path(&painter, &path, color, style);
+                        if is_loop {
+                            let heavy: Vec<(f32, f32)> =
+                                path.iter().map(|&(x, y)| (x + 1., y + 1.)).collect();
+                            let red = Color32::from_rgb(200, 0, 0);
+                            paint::pixel_path(&painter, &path, red, LineStyle::Solid);
+                            paint::pixel_path(&painter, &heavy, red, LineStyle::Solid);
+                        }
+                        if let Some(&(tip_x, tip_y)) = path.last() {
+                            paint::spans(
+                                &painter,
+                                &paint::arrowhead(tip_x, tip_y, to_start),
+                                color,
+                            );
+                        }
                     }
                     drawn.push((index, link_points(&path)));
+                }
+            };
+            let links = &self.shown().model.links;
+            match candidates {
+                Some(indices) => {
+                    for index in indices {
+                        paint_link(index, &links[index], &mut drawn, &mut rel_mesh);
+                    }
+                }
+                None => {
+                    for (index, link) in links.iter().enumerate() {
+                        paint_link(index, link, &mut drawn, &mut rel_mesh);
+                    }
+                }
+            }
+            if let Some(mesh) = rel_mesh {
+                if !mesh.is_empty() {
+                    painter.add(egui::Shape::mesh(mesh));
                 }
             }
             self.link_geometry.extend(drawn);
@@ -1954,6 +2015,47 @@ impl App {
         if self.gantt_ui.menu.is_none() && self.link_editor.is_none() {
             self.gantt_ui.picked_link = None;
         }
+    }
+
+    fn visible_link_indices(
+        &mut self,
+        rows: Option<&std::rc::Rc<Vec<Row>>>,
+        serial: Option<u64>,
+        row_of: Option<&[Option<usize>]>,
+        clip: Rect,
+        collapsed: bool,
+    ) -> Option<Vec<usize>> {
+        let (rows_rc, serial, row_of) = (rows?, serial?, row_of?);
+        if rows_rc.is_empty() {
+            return Some(vec![]);
+        }
+        if self.grid.row_offsets.len() != rows_rc.len() + 1 {
+            return None;
+        }
+        let need_rebuild = !matches!(
+            &self.gantt_ui.link_index,
+            Some(c) if c.serial == serial && std::rc::Rc::ptr_eq(&c.rows, rows_rc)
+        );
+        if need_rebuild {
+            let model = &self.shown().model;
+            let built = build_link_index(
+                serial,
+                rows_rc,
+                model.activities.len(),
+                &model.links,
+                row_of,
+            );
+            self.gantt_ui.link_index = Some(built);
+        }
+        let idx = self.gantt_ui.link_index.as_ref()?;
+        let collapsed_bars = collapsed.then_some(self.gantt_ui.collapsed_geometry.as_slice());
+        Some(collect_visible_links(
+            idx,
+            &self.grid.row_offsets,
+            self.grid.body_top,
+            clip,
+            collapsed_bars,
+        ))
     }
 
     fn relationship_gesture(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, clip: Rect) {
@@ -2426,4 +2528,133 @@ pub(crate) fn bar_label_date(origin: i64, value: Option<i64>, a: &Activity, end:
         _ => format::DateMark::Plain,
     };
     format::date_marked(origin, value, mark)
+}
+
+const LINK_BLOCK_ROWS: usize = 64;
+const LINK_MAX_SPAN_BLOCKS: usize = 8;
+
+fn build_link_index(
+    serial: u64,
+    rows: &std::rc::Rc<Vec<Row>>,
+    act_len: usize,
+    links: &[openxer_engine::model::Link],
+    row_of: &[Option<usize>],
+) -> dialogs::LinkIndexCache {
+    let n_blocks = rows.len().div_ceil(LINK_BLOCK_ROWS);
+    let mut blocks = vec![vec![]; n_blocks];
+    let mut long_links: Vec<(u32, u32, u32)> = vec![];
+    let mut deg = vec![0u32; act_len];
+    for l in links {
+        if l.pred < act_len {
+            deg[l.pred] += 1;
+        }
+        if l.succ < act_len {
+            deg[l.succ] += 1;
+        }
+    }
+    let mut act_offsets = Vec::with_capacity(act_len + 1);
+    let mut total = 0u32;
+    act_offsets.push(0);
+    for &d in &deg {
+        total += d;
+        act_offsets.push(total);
+    }
+    let mut cursor = act_offsets[..act_len].to_vec();
+    let mut act_links = vec![0u32; total as usize];
+    for (idx, l) in links.iter().enumerate() {
+        let u = idx as u32;
+        if l.pred < act_len {
+            let pos = cursor[l.pred] as usize;
+            act_links[pos] = u;
+            cursor[l.pred] += 1;
+        }
+        if l.succ < act_len {
+            let pos = cursor[l.succ] as usize;
+            act_links[pos] = u;
+            cursor[l.succ] += 1;
+        }
+        let Some(rp) = row_of.get(l.pred).copied().flatten() else {
+            continue;
+        };
+        let Some(rs) = row_of.get(l.succ).copied().flatten() else {
+            continue;
+        };
+        let lo = rp.min(rs);
+        let hi = rp.max(rs);
+        let b0 = lo / LINK_BLOCK_ROWS;
+        let b1 = hi / LINK_BLOCK_ROWS;
+        if b1 - b0 <= LINK_MAX_SPAN_BLOCKS {
+            for block in &mut blocks[b0..=b1] {
+                block.push(idx);
+            }
+        } else {
+            long_links.push((lo as u32, hi as u32, u));
+        }
+    }
+    long_links.sort_unstable_by_key(|e| e.0);
+    let mut long_max_end = Vec::with_capacity(long_links.len());
+    let mut max_end = 0u32;
+    for &(_, hi, _) in &long_links {
+        max_end = max_end.max(hi);
+        long_max_end.push(max_end);
+    }
+    dialogs::LinkIndexCache {
+        serial,
+        rows: rows.clone(),
+        blocks,
+        long_links,
+        long_max_end,
+        act_offsets,
+        act_links,
+    }
+}
+
+fn collect_visible_links(
+    idx: &dialogs::LinkIndexCache,
+    offsets: &[f32],
+    body_top: f32,
+    clip: Rect,
+    collapsed_bars: Option<&[BarGeometry]>,
+) -> Vec<usize> {
+    let last_row = offsets.len().saturating_sub(2);
+    let y_lo = clip.top() - 20. - body_top;
+    let y_hi = clip.bottom() + 20. - body_top;
+    let r_lo = offsets
+        .partition_point(|&y| y < y_lo)
+        .saturating_sub(1)
+        .min(last_row);
+    let r_hi = offsets.partition_point(|&y| y <= y_hi).min(last_row);
+    let mut candidates = vec![];
+    if !idx.blocks.is_empty() && r_lo <= r_hi {
+        let b0 = r_lo / LINK_BLOCK_ROWS;
+        let b1 = (r_hi / LINK_BLOCK_ROWS).min(idx.blocks.len() - 1);
+        for block in &idx.blocks[b0..=b1] {
+            candidates.extend_from_slice(block);
+        }
+    }
+    let hi = idx.long_links.partition_point(|e| e.0 <= r_hi as u32);
+    let mut k = hi;
+    while k > 0 {
+        k -= 1;
+        if idx.long_max_end[k] < r_lo as u32 {
+            break;
+        }
+        let (_, end_row, link_idx) = idx.long_links[k];
+        if end_row >= r_lo as u32 {
+            candidates.push(link_idx as usize);
+        }
+    }
+    if let Some(bars) = collapsed_bars {
+        let acts = idx.act_offsets.len().saturating_sub(1);
+        for b in bars {
+            if b.activity < acts {
+                let start = idx.act_offsets[b.activity] as usize;
+                let end = idx.act_offsets[b.activity + 1] as usize;
+                candidates.extend(idx.act_links[start..end].iter().map(|&u| u as usize));
+            }
+        }
+    }
+    candidates.sort_unstable();
+    candidates.dedup();
+    candidates
 }

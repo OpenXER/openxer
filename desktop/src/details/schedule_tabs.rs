@@ -236,36 +236,46 @@ impl StatusLayout {
 impl App {
     pub(super) fn general_tab(&mut self, ui: &mut egui::Ui, i: usize) {
         let (task_id, pid) = self.ids(i);
-        let doc = &self.project.document;
-        let duration_type = records::task_value(doc, task_id, pid, "duration_type");
-        let percent_type = records::task_value(doc, task_id, pid, "complete_pct_type");
-        let primary = num(&records::task_value(doc, task_id, pid, "rsrc_id"));
-        let wbs = self.project.details.get(&task_id).map_or(0, |d| d.wbs);
-        let manager = doc
-            .table("PROJWBS")
-            .and_then(|t| {
-                t.rows
-                    .iter()
-                    .find(|r| num(t.value(r, "wbs_id")) == wbs)
-                    .map(|r| num(t.value(r, "obs_id")))
-            })
-            .map(|obs| records::lookup(doc, "OBS", "obs_id", obs, "obs_name"))
-            .unwrap_or_default();
-        let mut resources: Vec<(i64, String)> = vec![];
-        if let Some(t) = doc.table("TASKRSRC") {
-            for index in records::rows_for(doc, "TASKRSRC", task_id, pid) {
-                let id = num(t.value(&t.rows[index], "rsrc_id"));
-                if id != 0 && !resources.iter().any(|(r, _)| *r == id) {
-                    let name = self
-                        .project
-                        .resource_names
-                        .get(&id)
-                        .cloned()
-                        .unwrap_or_else(|| id.to_string());
-                    resources.push((id, name));
+        let serial = self.project_serial();
+        let (duration_type, percent_type, primary, manager, resources) =
+            (*self.memo(serial, "detail_general", (task_id, pid), || {
+                let doc = &self.project.document;
+                let duration_type = records::task_value(doc, task_id, pid, "duration_type");
+                let percent_type = records::task_value(doc, task_id, pid, "complete_pct_type");
+                let primary = num(&records::task_value(doc, task_id, pid, "rsrc_id"));
+                let wbs = self.project.details.get(&task_id).map_or(0, |d| d.wbs);
+                let manager = doc
+                    .table("PROJWBS")
+                    .and_then(|t| {
+                        let wbs_c = t.field("wbs_id")?;
+                        let obs_c = t.field("obs_id")?;
+                        t.rows
+                            .iter()
+                            .find(|r| num(r.get(wbs_c).map_or("", String::as_str)) == wbs)
+                            .map(|r| num(r.get(obs_c).map_or("", String::as_str)))
+                    })
+                    .map(|obs| records::lookup(doc, "OBS", "obs_id", obs, "obs_name"))
+                    .unwrap_or_default();
+                let mut resources: Vec<(i64, String)> = vec![];
+                if let Some(t) = doc.table("TASKRSRC") {
+                    if let Some(rsrc_c) = t.field("rsrc_id") {
+                        for index in records::rows_for(doc, "TASKRSRC", task_id, pid) {
+                            let id = num(t.rows[index].get(rsrc_c).map_or("", String::as_str));
+                            if id != 0 && !resources.iter().any(|(r, _)| *r == id) {
+                                let name = self
+                                    .project
+                                    .resource_names
+                                    .get(&id)
+                                    .cloned()
+                                    .unwrap_or_else(|| id.to_string());
+                                resources.push((id, name));
+                            }
+                        }
+                    }
                 }
-            }
-        }
+                (duration_type, percent_type, primary, manager, resources)
+            }))
+            .clone();
         let calendars: Vec<(usize, String)> =
             crate::calendars::ops::assignable(&self.project, self.project.model.activities[i].cal)
                 .into_iter()
@@ -429,6 +439,9 @@ impl App {
             self.action_rects
                 .insert(name.into(), [r.left(), r.top(), r.right(), r.bottom()]);
         }
+        if !edits.is_empty() {
+            self.unpin_serial();
+        }
         for edit in edits {
             if let Err(e) = self.edit_activity(i, edit) {
                 self.error(e);
@@ -477,12 +490,18 @@ impl App {
             }
         };
         let actual = elapsed(a.act_start, a.act_finish);
-        let percent_type =
-            records::task_value(&self.project.document, task_id, pid, "complete_pct_type");
-        let suspend_raw = records::task_value(&self.project.document, task_id, pid, "suspend_date");
+        let serial = self.project_serial();
+        let (percent_type, suspend_raw, figures, steps_percent) =
+            (*self.memo(serial, "detail_status", (task_id, pid), || {
+                (
+                    records::task_value(&self.project.document, task_id, pid, "complete_pct_type"),
+                    records::task_value(&self.project.document, task_id, pid, "suspend_date"),
+                    totals(&self.project.document, task_id, pid),
+                    self.steps_drive_percent(task_id, pid),
+                )
+            }))
+            .clone();
         let mut suspend = openxer_xer::parse_relative(origin, &suspend_raw).unwrap_or(None);
-        let figures = totals(&self.project.document, task_id, pid);
-        let steps_percent = self.steps_drive_percent(task_id, pid);
         let status = a.status;
         let original = d.original_duration;
         let rem = a.rem;
@@ -958,6 +977,9 @@ impl App {
                 }
             }
         }
+        if !edits.is_empty() {
+            self.unpin_serial();
+        }
         for edit in edits {
             let result = match edit {
                 // The same question the table's Start cell asks.
@@ -1241,14 +1263,30 @@ impl App {
                         2 if sel => {
                             editor_cell(ui);
                             let mut kind = line.kind;
-                            egui::ComboBox::from_id_salt(("tie_type", line.index))
-                                .selected_text(&kind.as_str()[3..])
-                                .width(54.)
-                                .show_ui(ui, |ui| {
+                            let w = ui.available_width().clamp(36., 58.);
+                            crate::dialog_kit::flow_combo_with(
+                                ui,
+                                ("tie_type", line.index),
+                                w,
+                                &kind.as_str()[3..],
+                                true,
+                                |ui| {
                                     for value in LINK_TYPES {
-                                        ui.selectable_value(&mut kind, value, &value.as_str()[3..]);
+                                        let on = kind == value;
+                                        if crate::dialog_kit::flow_selectable(
+                                            ui,
+                                            on,
+                                            &value.as_str()[3..],
+                                            w - 4.,
+                                        )
+                                        .clicked()
+                                        {
+                                            kind = value;
+                                            ui.close();
+                                        }
                                     }
-                                });
+                                },
+                            );
                             if kind != line.kind {
                                 match line.cross {
                                     Some((owner, row)) => {
@@ -1842,14 +1880,24 @@ impl App {
             ui.add_space(4.);
             ui.horizontal(|ui| {
                 ui.label("Relationship Type");
-                egui::ComboBox::from_id_salt("picker_link_type")
-                    .selected_text(&kind.as_str()[3..])
-                    .width(50.)
-                    .show_ui(ui, |ui| {
+                crate::dialog_kit::flow_combo_with(
+                    ui,
+                    "picker_link_type",
+                    50.,
+                    &kind.as_str()[3..],
+                    true,
+                    |ui| {
                         for value in LINK_TYPES {
-                            ui.selectable_value(kind, value, &value.as_str()[3..]);
+                            let on = *kind == value;
+                            if crate::dialog_kit::flow_selectable(ui, on, &value.as_str()[3..], 46.)
+                                .clicked()
+                            {
+                                *kind = value;
+                                ui.close();
+                            }
                         }
-                    });
+                    },
+                );
                 ui.label("Lag");
                 let mut minutes = (*lag * 60.).round() as i64;
                 let periods = format::activity_periods(&app.project, activity);

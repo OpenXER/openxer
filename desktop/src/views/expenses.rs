@@ -297,9 +297,18 @@ impl App {
             &mut |app, ui| {
                 let g = &mut app.views.records.expenses.group;
                 let before = *g;
-                ui.radio_value(g, Group::Wbs, "Group by WBS");
-                ui.radio_value(g, Group::Activity, "Group by Activity");
-                ui.radio_value(g, Group::None, "No Grouping");
+                for (choice, label) in [
+                    (Group::Wbs, "Group by WBS"),
+                    (Group::Activity, "Group by Activity"),
+                    (Group::None, "No Grouping"),
+                ] {
+                    if chrome::menu_item(ui, chrome::Item::new(label).checked(*g == choice))
+                        .clicked()
+                    {
+                        *g = choice;
+                        ui.close();
+                    }
+                }
                 if *g != before {
                     app.views.records.expenses.list.collapsed.clear();
                 }

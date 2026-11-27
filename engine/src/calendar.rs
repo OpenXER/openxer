@@ -334,11 +334,10 @@ impl WorkCalendar {
             total += nw - t;
             t = self.next_work_time(nw, seg_end);
         }
-        let mut d = (t + DAY - 1).div_euclid(DAY);
+        let d = (t + DAY - 1).div_euclid(DAY);
         let end_day = b.div_euclid(DAY);
-        while d < end_day {
-            total += self.total_hours_on_date(d);
-            d += 1;
+        if d < end_day {
+            total += self.work_in_days(d, end_day, &self.pattern_totals());
         }
         t = t.max(end_day * DAY);
         if t < b {
@@ -493,6 +492,239 @@ impl CalendarAdapter {
         self.cal.in_work(t, t.div_euclid(DAY))
     }
 }
+
+/// Precomputed exception prefix-sums for O(log E) calendar position arithmetic
+/// over an immutable [`WorkCalendar`]. Produces identical results and
+/// before-origin marks as [`CalendarAdapter`].
+#[derive(Clone, Debug)]
+pub(crate) struct CalIndex {
+    continuous: bool,
+    pattern: [i64; 7],
+    week: i64,
+    exc_days: Vec<i64>,
+    exc_prefix: Vec<i64>,
+    exc_totals: Vec<i64>,
+}
+
+impl CalIndex {
+    pub(crate) fn new(cal: &WorkCalendar) -> Self {
+        if cal.continuous {
+            return Self {
+                continuous: true,
+                pattern: [DAY; 7],
+                week: 7 * DAY,
+                exc_days: Vec::new(),
+                exc_prefix: vec![0],
+                exc_totals: Vec::new(),
+            };
+        }
+        let pattern = cal.pattern_totals();
+        let week = pattern.iter().sum();
+        let mut exc_days = Vec::with_capacity(cal.exc.len() * 2);
+        let mut exc_totals = Vec::with_capacity(cal.exc.len() * 2);
+        let mut exc_prefix = Vec::with_capacity(cal.exc.len() * 2 + 1);
+        exc_prefix.push(0);
+        let mut last = i64::MIN;
+        let mut running = 0_i64;
+        for &key in cal.exc.keys() {
+            let x = key - cal.origin_serial;
+            for d in [x, x + 1] {
+                if d > last {
+                    let tot = cal.total_hours_on_date(d);
+                    running += tot - pattern[d.rem_euclid(7) as usize];
+                    exc_days.push(d);
+                    exc_totals.push(tot);
+                    exc_prefix.push(running);
+                    last = d;
+                }
+            }
+        }
+        Self {
+            continuous: false,
+            pattern,
+            week,
+            exc_days,
+            exc_prefix,
+            exc_totals,
+        }
+    }
+
+    fn total_hours_on_date(&self, day: i64) -> i64 {
+        if self.continuous {
+            return DAY;
+        }
+        match self.exc_days.binary_search(&day) {
+            Ok(idx) => self.exc_totals[idx],
+            Err(_) => self.pattern[day.rem_euclid(7) as usize],
+        }
+    }
+
+    fn work_in_days(&self, a: i64, b: i64) -> i64 {
+        if b <= a {
+            return 0;
+        }
+        if self.continuous {
+            return (b - a) * DAY;
+        }
+        let n = b - a;
+        let first = a.rem_euclid(7);
+        let mut total = n.div_euclid(7) * self.week
+            + (0..n.rem_euclid(7))
+                .map(|k| self.pattern[((first + k) % 7) as usize])
+                .sum::<i64>();
+        if !self.exc_days.is_empty() {
+            let lo = self.exc_days.partition_point(|&d| d < a);
+            let hi = self.exc_days.partition_point(|&d| d < b);
+            total += self.exc_prefix[hi] - self.exc_prefix[lo];
+        }
+        total
+    }
+
+    fn locate(&self, cal: &WorkCalendar, w: i64, at_close: bool) -> (i64, i64) {
+        let past = |c: i64| if at_close { c >= w } else { c > w };
+        if self.week <= 0 && !self.continuous {
+            let (mut day, mut rem) = (0, w);
+            loop {
+                let tot = self.total_hours_on_date(day);
+                if (at_close && rem <= tot) || (!at_close && rem < tot) {
+                    return (day, rem);
+                }
+                rem -= tot;
+                day += 1;
+            }
+        }
+        let _ = cal;
+        let c1 = self.work_in_days(0, 1);
+        let m = if past(c1) {
+            1
+        } else {
+            let m_init = ((w.max(0) / self.week).saturating_mul(7)).max(2);
+            let (mut lo, mut hi) = if past(self.work_in_days(0, m_init)) {
+                (2_i64, m_init)
+            } else {
+                let mut lo = m_init;
+                let mut step = 7_i64;
+                let mut hi = lo.saturating_add(step);
+                while !past(self.work_in_days(0, hi)) {
+                    lo = hi;
+                    step = step.saturating_mul(2);
+                    hi = lo.saturating_add(step);
+                }
+                (lo + 1, hi)
+            };
+            while lo < hi {
+                let mid = lo + (hi - lo) / 2;
+                if past(self.work_in_days(0, mid)) {
+                    hi = mid;
+                } else {
+                    lo = mid + 1;
+                }
+            }
+            lo
+        };
+        let day = m - 1;
+        (day, w - self.work_in_days(0, day))
+    }
+
+    pub(crate) fn work_at(&self, cal: &WorkCalendar, t: i64) -> i64 {
+        if t < 0 {
+            mark_before_origin();
+        }
+        let day = t.div_euclid(DAY);
+        let tod = t - day * DAY;
+        self.work_in_days(0, day)
+            + cal
+                .work_shifts(day)
+                .iter()
+                .map(|&(s, e)| (e.min(tod) - s).max(0))
+                .sum::<i64>()
+    }
+
+    pub(crate) fn start_at(&self, cal: &WorkCalendar, w: i64) -> i64 {
+        note_position(w);
+        let (day, mut w) = self.locate(cal, w, false);
+        let shifts = cal.work_shifts(day);
+        for &(s, e) in shifts.iter() {
+            if w < e - s {
+                return day * DAY + s + w;
+            }
+            w -= e - s;
+        }
+        let last = shifts.last().map_or(0, |&(_, e)| e);
+        for &(s, _) in shifts.iter() {
+            if s >= last {
+                return day * DAY + s;
+            }
+        }
+        (day + 1) * DAY
+    }
+
+    pub(crate) fn finish_at(&self, cal: &WorkCalendar, w: i64) -> i64 {
+        note_position(w);
+        let (day, mut w) = self.locate(cal, w, true);
+        for &(s, e) in cal.work_shifts(day).iter() {
+            if w <= e - s {
+                return day * DAY + s + w;
+            }
+            w -= e - s;
+        }
+        (day + 1) * DAY
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct CalRef<'a> {
+    cal: &'a WorkCalendar,
+    ix: &'a CalIndex,
+}
+
+impl<'a> CalRef<'a> {
+    pub(crate) fn new(cal: &'a WorkCalendar, ix: &'a CalIndex) -> Self {
+        Self { cal, ix }
+    }
+    pub(crate) fn add(self, t: i64, m: i64) -> i64 {
+        if m == 0 {
+            self.snap_start(t)
+        } else if m < 0 {
+            self.sub(t, -m)
+        } else {
+            self.finish_at(self.work_at(t) + m)
+        }
+    }
+    pub(crate) fn sub(self, t: i64, m: i64) -> i64 {
+        if m == 0 {
+            self.snap_finish(t)
+        } else if m < 0 {
+            self.add(t, -m)
+        } else {
+            self.start_at(note_position(self.work_at(t) - m).max(0))
+        }
+    }
+    pub(crate) fn between(self, a: i64, b: i64) -> i64 {
+        self.work_at(b) - self.work_at(a)
+    }
+    pub(crate) fn work_at(self, t: i64) -> i64 {
+        self.ix.work_at(self.cal, t)
+    }
+    pub(crate) fn start_at(self, w: i64) -> i64 {
+        self.ix.start_at(self.cal, w)
+    }
+    pub(crate) fn finish_at(self, w: i64) -> i64 {
+        self.ix.finish_at(self.cal, w)
+    }
+    pub(crate) fn add_start(self, t: i64, m: i64) -> i64 {
+        self.start_at(self.work_at(t) + m)
+    }
+    pub(crate) fn snap_start(self, t: i64) -> i64 {
+        self.start_at(self.work_at(t))
+    }
+    pub(crate) fn snap_finish(self, t: i64) -> i64 {
+        self.finish_at(self.work_at(t))
+    }
+    pub(crate) fn is_work(self, t: i64) -> bool {
+        self.cal.in_work(t, t.div_euclid(DAY))
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -636,5 +868,69 @@ mod tests {
         assert_eq!(c.cal.next_work_time(-1440, 1440), 480);
         assert_eq!(c.cal.duration(480, 1020), 480);
         assert_eq!(c.cal.duration(1020, 480), -480);
+    }
+
+    #[test]
+    fn cal_index_matches_work_calendar_on_random_and_overtime_calendars() {
+        let mut rng = Lcg(99);
+        for case in 0..40 {
+            let origin = 45000 + rng.next(7);
+            let template: [Shifts; 7] = std::array::from_fn(|_| rng.shifts());
+            let mut exc = BTreeMap::new();
+            for _ in 0..rng.next(45) {
+                let at = origin - 3 + rng.next(900);
+                for k in 0..1 + rng.next(4) * rng.next(25) {
+                    // Mix empty holidays and overtime 16-hour / 24-hour exceptions.
+                    let shifts = if rng.next(3) == 0 {
+                        vec![(360, 1320)]
+                    } else {
+                        rng.shifts()
+                    };
+                    exc.insert(at + k, shifts);
+                }
+            }
+            let wc = WorkCalendar::new("r".into(), case % 17 == 0, origin, template, exc);
+            if wc.template.iter().all(|s| s.is_empty()) && !wc.continuous {
+                continue;
+            }
+            let adapter = CalendarAdapter::new(wc);
+            let ix = CalIndex::new(&adapter.cal);
+            let cref = CalRef::new(&adapter.cal, &ix);
+
+            let mut ts: Vec<i64> = (-2 * DAY..9 * DAY).step_by(19).collect();
+            ts.extend((0..60).map(|_| rng.next(1500) * DAY + rng.next(DAY as u64)));
+            ts.push((2_958_464 - origin) * DAY + 480);
+            for t in ts {
+                clear_before_origin();
+                let expected = adapter.work_at(t);
+                let exp_mark = take_before_origin();
+                clear_before_origin();
+                let got = cref.work_at(t);
+                let got_mark = take_before_origin();
+                assert_eq!((got, got_mark), (expected, exp_mark), "case {case} t={t}");
+                assert_eq!(cref.snap_start(t), adapter.snap_start(t));
+                assert_eq!(cref.snap_finish(t), adapter.snap_finish(t));
+            }
+            let year = adapter.work_at(3 * 365 * DAY);
+            let mut ws: Vec<i64> = (-30..3 * DAY).step_by(7).collect();
+            ws.extend((0..60).map(|_| rng.next(year as u64 + 1)));
+            for w in ws {
+                clear_before_origin();
+                let es = adapter.start_at(w);
+                let ms = take_before_origin();
+                clear_before_origin();
+                let gs = cref.start_at(w);
+                let mgs = take_before_origin();
+                assert_eq!((gs, mgs), (es, ms), "case {case} start_at({w})");
+
+                clear_before_origin();
+                let ef = adapter.finish_at(w);
+                let mf = take_before_origin();
+                clear_before_origin();
+                let gf = cref.finish_at(w);
+                let mgf = take_before_origin();
+                assert_eq!((gf, mgf), (ef, mf), "case {case} finish_at({w})");
+            }
+        }
     }
 }

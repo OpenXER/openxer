@@ -102,14 +102,17 @@ pub struct GridState {
     /// The column lookups of the last frames and what they were built for,
     /// reused while none of it changes (see `shared_index`).
     index_cache: RefCell<Option<IndexCache>>,
+    pub(super) metrics_cache: RefCell<Option<MetricsCache>>,
     /// The project's undo snapshot serial, worked out once while the table
     /// and Gantt rows are painted (nothing changes the project there), so
     /// the many row and column lookups of one pass do not each compare the
     /// whole project with the snapshot. Empty outside that pass.
     serial_pin: std::cell::Cell<Option<Option<u64>>>,
+    /// Snapshot serial verified cleanly during this frame while pinned.
+    pub(crate) frame_verified_serial: std::cell::Cell<Option<u64>>,
     /// Row tops from the first row's top in the last painted frame, plus the
     /// total height; the table and the Gantt share these rows.
-    pub row_offsets: Vec<f32>,
+    pub row_offsets: std::rc::Rc<Vec<f32>>,
     /// Screen y of the first row's top in the last painted frame.
     pub body_top: f32,
     /// Rows wholly in view in the last painted frame: PageUp and PageDown
@@ -124,7 +127,17 @@ impl GridState {
     pub(crate) fn drop_rows_cache(&self) {
         self.rows_cache.borrow_mut().take();
         self.index_cache.borrow_mut().take();
+        self.metrics_cache.borrow_mut().take();
+        self.frame_verified_serial.set(None);
     }
+}
+
+pub(super) struct MetricsCache {
+    pub(super) rows: std::rc::Rc<Vec<Row>>,
+    pub(super) base_height: f32,
+    pub(super) band_heights: [f32; layout::MAX_BAND_LEVELS],
+    pub(super) heights: Option<std::rc::Rc<std::collections::HashMap<usize, f32>>>,
+    pub(super) metrics: std::rc::Rc<table::RowMetrics>,
 }
 
 /// Column lookups (`columns::Index`) built for one undo snapshot of the
@@ -170,6 +183,19 @@ struct RowsCache {
     spotlight: Option<(i64, i64)>,
     critical_paths: Option<u64>,
     rows: std::rc::Rc<Vec<Row>>,
+    row_of: std::cell::OnceCell<std::rc::Rc<Vec<Option<usize>>>>,
+}
+
+fn build_row_of(act_len: usize, rows: &[Row]) -> Vec<Option<usize>> {
+    let mut map = vec![None; act_len];
+    for (k, r) in rows.iter().enumerate() {
+        if let Row::Activity(i) = *r {
+            if let Some(slot) = map.get_mut(i) {
+                *slot = Some(k);
+            }
+        }
+    }
+    map
 }
 
 /// One column of the current layout as shown.
@@ -247,9 +273,14 @@ impl App {
     /// Work out the snapshot serial once for a pass that does not change the
     /// project (painting the table and Gantt rows); `unpin_serial` ends it.
     pub(crate) fn pin_serial(&self) {
-        self.grid.serial_pin.set(None);
+        if self.grid.serial_pin.get().is_some() {
+            return;
+        }
         let serial = self.shown_serial();
         self.grid.serial_pin.set(Some(serial));
+        if let Some(s) = serial {
+            self.grid.frame_verified_serial.set(Some(s));
+        }
     }
 
     /// The serial worked out for the current painting pass, if one is on.
@@ -543,8 +574,28 @@ impl App {
             spotlight: self.spotlight_window(),
             critical_paths: ix.critical_paths.as_ref().map(|v| v.serial),
             rows: rows.clone(),
+            row_of: std::cell::OnceCell::new(),
         });
         rows
+    }
+
+    /// Dense activity-to-row lookup for `rows`, lazily cached on `RowsCache`
+    /// when `rows` is the current cached build.
+    pub(crate) fn shown_row_of(&self, rows: &[Row]) -> std::rc::Rc<Vec<Option<usize>>> {
+        let act_len = self.shown().model.activities.len();
+        if let Some(c) = self.grid.rows_cache.borrow().as_ref() {
+            if c.rows.as_ptr() == rows.as_ptr() && c.rows.len() == rows.len() {
+                if let Some(cached) = c.row_of.get() {
+                    if cached.len() == act_len {
+                        return cached.clone();
+                    }
+                }
+                let built = std::rc::Rc::new(build_row_of(act_len, rows));
+                let _ = c.row_of.set(built.clone());
+                return built;
+            }
+        }
+        std::rc::Rc::new(build_row_of(act_len, rows))
     }
 
     /// Activities of the active project under band `index` of the last row build.

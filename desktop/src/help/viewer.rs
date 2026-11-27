@@ -306,10 +306,7 @@ fn contents_list(
             let r = ui
                 .horizontal(|ui| {
                     ui.add_space(10.);
-                    ui.selectable_label(
-                        t.id == current,
-                        RichText::new(&t.title).font(chrome::ui_font()),
-                    )
+                    crate::dialog_kit::flow_selectable(ui, t.id == current, &t.title, 180.)
                 })
                 .inner;
             if r.clicked() {
@@ -337,7 +334,7 @@ fn results_list(
     ui.add_space(4.);
     let first = query.split_whitespace().next().unwrap_or("").to_lowercase();
     for (n, t) in hits.iter().enumerate() {
-        let r = ui.selectable_label(false, RichText::new(&t.title).font(chrome::ui_font()));
+        let r = crate::dialog_kit::flow_selectable(ui, false, &t.title, 260.);
         if r.clicked() {
             k.go = Some(t.id.to_owned());
         }

@@ -216,6 +216,7 @@ pub struct Lookup<'a> {
     shapes: RefCell<HashMap<i64, Option<Shape>>>,
     /// Each resource's calendar (model index), where it has recurring work.
     calendars: OnceCell<HashMap<i64, usize>>,
+    rsrc_cols: OnceCell<crate::FieldIndex>,
 }
 
 fn num(s: &str) -> i64 {
@@ -243,6 +244,7 @@ impl<'a> Lookup<'a> {
             kinds: OnceCell::new(),
             shapes: RefCell::new(HashMap::new()),
             calendars: OnceCell::new(),
+            rsrc_cols: OnceCell::new(),
         }
     }
 
@@ -251,11 +253,15 @@ impl<'a> Lookup<'a> {
         self.kinds
             .get_or_init(|| {
                 self.doc.table("TASK").map_or_else(HashMap::new, |t| {
+                    let cols = t.field_index();
+                    let c_proj = cols.col("proj_id");
+                    let c_task = cols.col("task_id");
+                    let c_dur = cols.col("duration_type");
                     let mut map = HashMap::new();
                     for r in &t.rows {
-                        if num(t.value(r, "proj_id")) == self.pid {
-                            map.entry(num(t.value(r, "task_id")))
-                                .or_insert_with(|| t.value(r, "duration_type").to_string());
+                        if num(crate::FieldIndex::get(r, c_proj)) == self.pid {
+                            map.entry(num(crate::FieldIndex::get(r, c_task)))
+                                .or_insert_with(|| crate::FieldIndex::get(r, c_dur).to_string());
                         }
                     }
                     map
@@ -284,14 +290,23 @@ impl<'a> Lookup<'a> {
         self.calendars
             .get_or_init(|| {
                 let cals = &self.model.calendars;
+                let cal_pos: HashMap<&str, usize> = cals
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| has_recurring_work(&c.cal))
+                    .map(|(i, c)| (c.id.as_str(), i))
+                    .collect();
                 self.doc.table("RSRC").map_or_else(HashMap::new, |t| {
+                    let cols = t.field_index();
+                    let c_clndr = cols.col("clndr_id");
+                    let c_rsrc = cols.col("rsrc_id");
                     t.rows
                         .iter()
                         .filter_map(|r| {
-                            let id = t.value(r, "clndr_id");
-                            cals.iter()
-                                .position(|c| c.id == id && has_recurring_work(&c.cal))
-                                .map(|c| (num(t.value(r, "rsrc_id")), c))
+                            let id = crate::FieldIndex::get(r, c_clndr);
+                            cal_pos
+                                .get(id)
+                                .map(|&c| (num(crate::FieldIndex::get(r, c_rsrc)), c))
                         })
                         .collect()
                 })
@@ -305,6 +320,7 @@ impl<'a> Lookup<'a> {
     pub fn shaping(&self, row: usize, activity: &Activity) -> Option<Shaping> {
         let t = self.doc.table("TASKRSRC")?;
         let r = t.rows.get(row)?;
+        let cols = self.rsrc_cols.get_or_init(|| t.field_index());
         let shape = self
             .curve_of(row)
             .filter(|_| curve_applies(self.duration_type(activity.task_id)));
@@ -312,22 +328,22 @@ impl<'a> Lookup<'a> {
         // Without units there is no own duration: the assignment spans the
         // activity, so a cost on it spreads over the activity's span.
         let length = |qty: &str, rate: &str| {
-            let (qty, rate) = (float(t.value(r, qty)), float(t.value(r, rate)));
+            let (qty, rate) = (float(cols.value(r, qty)), float(cols.value(r, rate)));
             (own && rate > 0. && qty > 0.).then(|| (qty / rate * 60.).round_ties_even() as i64)
         };
-        let lag = |k: &str| if own { minutes(t.value(r, k)) } else { 0 };
+        let lag = |k: &str| if own { minutes(cols.value(r, k)) } else { 0 };
         // A resource dependent activity's assignments work on their
         // resource's calendar. The engine's `Assignment.cal` carries it only
         // while remaining units are left; the spread takes it from the task
         // type and the resource, so it stays put when the assignment
         // completes.
         let cal = if activity.task_type == TaskType::Resource {
-            self.resource_calendar(num(t.value(r, "rsrc_id")))
+            self.resource_calendar(num(cols.value(r, "rsrc_id")))
         } else {
             None
         };
         let origin = self.model.origin_serial * openxer_engine::calendar::DAY;
-        let stored = |k: &str| crate::parse_absolute(t.value(r, k)).map(|v| v - origin);
+        let stored = |k: &str| crate::parse_absolute(cols.value(r, k)).map(|v| v - origin);
         let data_date = self.model.project.data_date;
         let started = activity.act_start.is_some();
         let act_start = stored("act_start_date").filter(|&s| {

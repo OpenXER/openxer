@@ -2,7 +2,7 @@
 //! float, ALAP, level of effort, summaries, longest path). Rules are listed
 //! in `engine/RULES.md`.
 use crate::{
-    calendar::{CalendarAdapter, WorkCalendar, DAY},
+    calendar::{CalIndex, CalRef, CalendarAdapter, WorkCalendar, DAY},
     model::*,
 };
 
@@ -16,6 +16,8 @@ pub struct Scheduler<'a> {
     pub latest_end: Option<i64>,
     pub latest_end_start: Option<i64>,
     pub(crate) cal24: CalendarAdapter,
+    pub(crate) cal_indices: Vec<CalIndex>,
+    pub(crate) cal24_index: CalIndex,
     /// Set when several projects are scheduled as one network.
     pub(crate) partition: Option<Partition>,
     /// Activities leveling left over-allocated because their float would not
@@ -47,33 +49,36 @@ impl Partition {
 }
 /// PASS-7: the work lists of one pass. `ready` is the queue of activities
 /// whose dependencies are all scheduled, taken from the front in the order
-/// they became ready; `waiting` and `queued` mark, by activity index, the
-/// activities still waiting for a dependency and those in the queue, so a
-/// membership test is one lookup instead of a scan of a list.
+/// they became ready; `in_pass` and `in_degree` track active pass members and
+/// remaining unscheduled dependency edges for O(V + E) Kahn traversal.
 #[derive(Clone, Debug, Default)]
 pub struct PassLists {
     pub ready: std::collections::VecDeque<usize>,
-    waiting: Vec<bool>,
-    queued: Vec<bool>,
+    in_pass: Vec<bool>,
+    in_degree: Vec<usize>,
 }
 impl PassLists {
     pub fn new(activities: usize) -> Self {
         Self {
             ready: Default::default(),
-            waiting: vec![false; activities],
-            queued: vec![false; activities],
+            in_pass: vec![false; activities],
+            in_degree: vec![0; activities],
         }
     }
-    /// Move a waiting activity to the back of the ready queue.
+    /// Move an activity to the back of the ready queue.
     fn enqueue(&mut self, i: usize) {
         self.ready.push_back(i);
-        self.waiting[i] = false;
-        self.queued[i] = true;
     }
 }
 impl<'a> Scheduler<'a> {
     pub fn new(model: &'a mut Model) -> Self {
         let cal24 = CalendarAdapter::new(WorkCalendar::continuous(model.origin_serial));
+        let cal24_index = CalIndex::new(&cal24.cal);
+        let cal_indices = model
+            .calendars
+            .iter()
+            .map(|c| CalIndex::new(&c.cal))
+            .collect();
         Self {
             model,
             tasks_to_schedule: vec![],
@@ -84,6 +89,8 @@ impl<'a> Scheduler<'a> {
             latest_end: None,
             latest_end_start: None,
             cal24,
+            cal_indices,
+            cal24_index,
             partition: None,
             left_over_allocated: vec![],
         }
@@ -113,18 +120,24 @@ impl<'a> Scheduler<'a> {
     pub(crate) fn cal(&self, i: usize) -> &CalendarAdapter {
         &self.model.calendars[self.model.activities[i].cal]
     }
+    pub(crate) fn cal_by_index(&self, idx: usize) -> CalRef<'_> {
+        CalRef::new(&self.model.calendars[idx].cal, &self.cal_indices[idx])
+    }
+    pub(crate) fn cal_ref(&self, i: usize) -> CalRef<'_> {
+        self.cal_by_index(self.model.activities[i].cal)
+    }
     /// PASS-3: under Retained Logic or Progress Override a completed activity
     /// (other than a summary) is placed on round-the-clock time. Lags and
     /// float keep the activity's own calendar.
-    pub(crate) fn scheduling_cal(&self, i: usize) -> &CalendarAdapter {
+    pub(crate) fn scheduling_cal_ref(&self, i: usize) -> CalRef<'_> {
         let task = &self.model.activities[i];
         if task.is_completed()
             && task.task_type != TaskType::Wbs
             && !self.model.options.neither_oos()
         {
-            &self.cal24
+            CalRef::new(&self.cal24.cal, &self.cal24_index)
         } else {
-            self.cal(i)
+            self.cal_ref(i)
         }
     }
     /// PASS-5: level-of-effort and summary activities take no part in the
@@ -155,62 +168,57 @@ impl<'a> Scheduler<'a> {
     }
     /// PASS-7: seed the pass with the activities that have no dependency left
     /// to wait for. The order is not observable in any date (input_order test).
-    /// `remaining` lists the pass's activities, each once; they start waiting.
+    /// `remaining` lists the pass's activities, each once.
     pub fn create_open_end_list(&self, lists: &mut PassLists, remaining: &[usize], backward: bool) {
         for &i in remaining {
-            lists.waiting[i] = true;
-        }
-        let mut todo = vec![];
-        for &i in remaining.iter().rev() {
             let t = &self.model.activities[i];
-            if Self::skip_type(t.task_type) {
+            if !Self::skip_type(t.task_type) {
+                lists.in_pass[i] = true;
+            }
+        }
+        for &i in remaining {
+            if !lists.in_pass[i] {
                 continue;
             }
+            let t = &self.model.activities[i];
             let deps = if backward { &t.succs } else { &t.preds };
-            if !deps.iter().any(|&r| {
-                let l = &self.model.links[r];
-                lists.waiting[if backward { l.succ } else { l.pred }]
-            }) {
-                todo.push(i);
-            }
-        }
-        for i in todo {
-            lists.enqueue(i);
-        }
-    }
-    /// PASS-7: an activity becomes ready only when every other dependency has
-    /// been scheduled, so none still waits in either list. `just` is the
-    /// activity at the front of the ready queue, taken off it here.
-    pub fn create_todo_next_list(&self, just: usize, lists: &mut PassLists, backward: bool) {
-        let t = &self.model.activities[just];
-        let rels = if backward { &t.preds } else { &t.succs };
-        let mut todo = vec![];
-        for &r in rels {
-            let rel = &self.model.links[r];
-            let nxt = if backward { rel.pred } else { rel.succ };
-            if !lists.waiting[nxt] {
-                continue;
-            }
-            let a = &self.model.activities[nxt];
-            let others = if backward { &a.succs } else { &a.preds };
-            let blocked = others.iter().any(|&r| {
+            let mut deg = 0usize;
+            for &r in deps {
                 let l = &self.model.links[r];
                 let dep = if backward { l.succ } else { l.pred };
-                dep != just && (lists.waiting[dep] || lists.queued[dep])
-            });
-            if !blocked && !todo.contains(&nxt) {
-                todo.push(nxt);
+                if lists.in_pass[dep] {
+                    deg += 1;
+                }
+            }
+            lists.in_degree[i] = deg;
+        }
+        for &i in remaining.iter().rev() {
+            if lists.in_pass[i] && lists.in_degree[i] == 0 {
+                lists.enqueue(i);
             }
         }
-        for i in todo {
-            lists.enqueue(i);
-        }
+    }
+    /// PASS-7: decrement each dependent's remaining in-degree and enqueue it
+    /// once its last dependency has been scheduled. `just` is the activity at
+    /// the front of the ready queue, taken off it here.
+    pub fn create_todo_next_list(&self, just: usize, lists: &mut PassLists, backward: bool) {
         if lists.ready.front() == Some(&just) {
             lists.ready.pop_front();
         } else {
             lists.ready.retain(|&i| i != just);
         }
-        lists.queued[just] = false;
+        let t = &self.model.activities[just];
+        let rels = if backward { &t.preds } else { &t.succs };
+        for &r in rels {
+            let rel = &self.model.links[r];
+            let nxt = if backward { rel.pred } else { rel.succ };
+            if lists.in_pass[nxt] && lists.in_degree[nxt] > 0 {
+                lists.in_degree[nxt] -= 1;
+                if lists.in_degree[nxt] == 0 {
+                    lists.enqueue(nxt);
+                }
+            }
+        }
     }
     /// CON-7: mandatory pre-pass, forward. The date comes from the
     /// constraint's early reader, so a Mandatory Finish converts to a start
@@ -238,11 +246,11 @@ impl<'a> Scheduler<'a> {
                 } else if t.task_type == TaskType::FinMile {
                     self.edge_adjust_early_reend(i, restart)
                 } else {
-                    self.scheduling_cal(i).snap_start(restart)
+                    self.scheduling_cal_ref(i).snap_start(restart)
                 };
                 (d, d)
             } else {
-                let cal = self.scheduling_cal(i);
+                let cal = self.scheduling_cal_ref(i);
                 let rs = cal.snap_start(restart);
                 (rs, cal.add(rs, t.rem))
             };
@@ -275,7 +283,7 @@ impl<'a> Scheduler<'a> {
             let rs = if rem == 0 {
                 limit
             } else {
-                self.scheduling_cal(i).sub(limit, rem)
+                self.scheduling_cal_ref(i).sub(limit, rem)
             };
             self.model.activities[i].reend = Some(limit);
             self.model.activities[i].restart = Some(rs);
@@ -466,11 +474,11 @@ impl<'a> Scheduler<'a> {
             // FLT-8: a start milestone's one date is a start moment, so ALAP
             // moves it to the start edge (corpus 6183).
             let (s, e) = if t.task_type == TaskType::Mile {
-                let s = self.cal(i).add_start(re, ff);
+                let s = self.cal_ref(i).add_start(re, ff);
                 (s, s)
             } else {
-                let e = self.cal(i).add(re, ff);
-                (self.cal(i).sub(e, t.rem), e)
+                let e = self.cal_ref(i).add(re, ff);
+                (self.cal_ref(i).sub(e, t.rem), e)
             };
             let t = &mut self.model.activities[i];
             t.reend = Some(e);
@@ -562,11 +570,11 @@ impl<'a> Scheduler<'a> {
             else {
                 continue;
             };
-            let es = self.cal(i).snap_start(dd.max(es));
+            let es = self.cal_ref(i).snap_start(dd.max(es));
             let ef = es.max(ef);
-            let dur = self.cal(i).between(es, ef);
+            let dur = self.cal_ref(i).between(es, ef);
             let mut ls = if dur != 0 {
-                self.cal(i).sub(lf, dur)
+                self.cal_ref(i).sub(lf, dur)
             } else {
                 lf
             };
@@ -612,7 +620,7 @@ impl<'a> Scheduler<'a> {
             if t.task_type != TaskType::Wbs || t.is_completed() {
                 continue;
             }
-            let d = self.data_date_of(i).map(|d| self.cal(i).snap_start(d));
+            let d = self.data_date_of(i).map(|d| self.cal_ref(i).snap_start(d));
             let t = &mut self.model.activities[i];
             t.early_start = d;
             t.early_finish = d;
@@ -811,13 +819,16 @@ impl<'a> Scheduler<'a> {
 /// its own calendar. The scheduling passes treat an LOE as having no work of
 /// its own; the stored duration follows the dates the passes gave it.
 pub fn set_loe_remaining_durations(model: &mut Model) {
+    let mut indices: Vec<Option<CalIndex>> = vec![None; model.calendars.len()];
     for i in 0..model.activities.len() {
         let t = &model.activities[i];
         if t.task_type != TaskType::Loe || t.is_completed() {
             continue;
         }
         if let (Some(start), Some(end)) = (t.restart, t.reend) {
-            let span = model.calendars[t.cal].between(start, end);
+            let cal = &model.calendars[t.cal].cal;
+            let ix = indices[t.cal].get_or_insert_with(|| CalIndex::new(cal));
+            let span = CalRef::new(cal, ix).between(start, end);
             model.activities[i].rem = span.max(0);
         }
     }

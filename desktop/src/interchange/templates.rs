@@ -199,35 +199,34 @@ fn combo_column(
     let shown = Column::from_key(key)
         .and_then(|c| catalog.iter().find(|(k, _)| *k == c))
         .map_or("(choose a column)", |(_, t)| t.as_str());
-    egui::ComboBox::from_id_salt(salt)
-        .selected_text(shown)
-        .width(width)
-        .show_ui(ui, |ui| {
-            for (column, title) in catalog {
-                let k = column.key();
-                if ui.selectable_label(*key == k, title).clicked() {
-                    *key = k;
-                }
+    crate::dialog_kit::flow_combo_with(ui, salt, width, shown, true, |ui| {
+        for (column, title) in catalog {
+            let k = column.key();
+            if crate::dialog_kit::flow_selectable(ui, *key == k, title, width - 4.).clicked() {
+                *key = k;
+                ui.close();
             }
-        });
+        }
+    });
 }
 
 fn template_form(ui: &mut egui::Ui, e: &mut TemplateEditor, rects: &mut Vec<(String, Rect)>) {
     ui.horizontal(|ui| {
         ui.label("Name");
-        let r = ui.add(egui::TextEdit::singleline(&mut e.draft.name).desired_width(240.));
+        let r = crate::dialog_kit::flow_edit(ui, "template_name", &mut e.draft.name, 240., true);
         rects.push(("template_name".into(), r.rect));
         ui.add_space(12.);
         ui.label("Subject area");
-        egui::ComboBox::from_id_salt("template_subject")
-            .selected_text(e.draft.subject.clone())
-            .show_ui(ui, |ui| {
-                ui.selectable_value(
-                    &mut e.draft.subject,
-                    et::SUBJECT_ACTIVITIES.to_string(),
-                    et::SUBJECT_ACTIVITIES,
-                );
-            });
+        if let (_, Some(_)) = crate::dialog_kit::flow_combo(
+            ui,
+            "template_subject",
+            140.,
+            &[et::SUBJECT_ACTIVITIES],
+            Some(0),
+            true,
+        ) {
+            e.draft.subject = et::SUBJECT_ACTIVITIES.to_string();
+        }
     });
     ui.add_space(4.);
     ui.label(RichText::new("Columns").strong());
@@ -258,7 +257,7 @@ fn template_form(ui: &mut egui::Ui, e: &mut TemplateEditor, rects: &mut Vec<(Str
                     ui.set_width(220.);
                     for (n, &i) in available.iter().enumerate() {
                         let on = e.pick_available == Some(n);
-                        let r = ui.selectable_label(on, &e.catalog[i].1);
+                        let r = crate::dialog_kit::flow_selectable(ui, on, &e.catalog[i].1, 210.);
                         if r.clicked() {
                             e.pick_available = Some(n);
                         }
@@ -291,7 +290,14 @@ fn template_form(ui: &mut egui::Ui, e: &mut TemplateEditor, rects: &mut Vec<(Str
                     ui.set_width(220.);
                     for (n, c) in chosen.iter().enumerate() {
                         let on = e.pick_chosen == Some(n);
-                        if ui.selectable_label(on, title_of(c, &e.catalog)).clicked() {
+                        if crate::dialog_kit::flow_selectable(
+                            ui,
+                            on,
+                            &title_of(c, &e.catalog),
+                            210.,
+                        )
+                        .clicked()
+                        {
                             e.pick_chosen = Some(n);
                         }
                     }
@@ -324,8 +330,8 @@ fn template_form(ui: &mut egui::Ui, e: &mut TemplateEditor, rects: &mut Vec<(Str
     ui.add_space(4.);
     ui.horizontal(|ui| {
         ui.label(RichText::new("Filter").strong());
-        ui.radio_value(&mut e.draft.match_all, true, "Match all");
-        ui.radio_value(&mut e.draft.match_all, false, "Match any");
+        crate::dialog_kit::flow_radio(ui, &mut e.draft.match_all, true, "Match all", true);
+        crate::dialog_kit::flow_radio(ui, &mut e.draft.match_all, false, "Match any", true);
         let b = crate::chrome::command_button(ui, "Add filter line", Vec2::new(0., 21.), true);
         rects.push(("template_add_filter".into(), b.rect));
         if b.clicked() && e.draft.filter.len() < 20 {
@@ -336,6 +342,7 @@ fn template_form(ui: &mut egui::Ui, e: &mut TemplateEditor, rects: &mut Vec<(Str
             });
         }
     });
+    let op_labels: Vec<&str> = Op::ALL.iter().map(|op| op.label()).collect();
     let mut drop_filter = None;
     for (n, c) in e.draft.filter.iter_mut().enumerate() {
         ui.horizontal(|ui| {
@@ -346,19 +353,19 @@ fn template_form(ui: &mut egui::Ui, e: &mut TemplateEditor, rects: &mut Vec<(Str
                 &mut c.column,
                 170.,
             );
-            egui::ComboBox::from_id_salt(("template_filter_op", n))
-                .selected_text(c.op.label())
-                .width(170.)
-                .show_ui(ui, |ui| {
-                    for op in Op::ALL {
-                        ui.selectable_value(&mut c.op, op, op.label());
-                    }
-                });
+            let sel = Op::ALL.iter().position(|&op| op == c.op);
+            if let (_, Some(idx)) = crate::dialog_kit::flow_combo(
+                ui,
+                ("template_filter_op", n),
+                170.,
+                &op_labels,
+                sel,
+                true,
+            ) {
+                c.op = Op::ALL[idx];
+            }
             let takes = !matches!(c.op, Op::IsEmpty | Op::IsNotEmpty);
-            ui.add_enabled(
-                takes,
-                egui::TextEdit::singleline(&mut c.value).desired_width(150.),
-            );
+            crate::dialog_kit::flow_edit(ui, ("template_filter_val", n), &mut c.value, 150., takes);
             if crate::chrome::command_button(ui, "Remove", Vec2::new(0., 21.), true).clicked() {
                 drop_filter = Some(n);
             }
@@ -389,17 +396,17 @@ fn template_form(ui: &mut egui::Ui, e: &mut TemplateEditor, rects: &mut Vec<(Str
                 &mut s.column,
                 170.,
             );
-            egui::ComboBox::from_id_salt(("template_sort_order", n))
-                .selected_text(if s.descending {
-                    "Descending"
-                } else {
-                    "Ascending"
-                })
-                .width(110.)
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut s.descending, false, "Ascending");
-                    ui.selectable_value(&mut s.descending, true, "Descending");
-                });
+            let sel = Some(usize::from(s.descending));
+            if let (_, Some(idx)) = crate::dialog_kit::flow_combo(
+                ui,
+                ("template_sort_order", n),
+                110.,
+                &["Ascending", "Descending"],
+                sel,
+                true,
+            ) {
+                s.descending = idx == 1;
+            }
             if crate::chrome::command_button(ui, "Remove", Vec2::new(0., 21.), true).clicked() {
                 drop_sort = Some(n);
             }
@@ -411,20 +418,26 @@ fn template_form(ui: &mut egui::Ui, e: &mut TemplateEditor, rects: &mut Vec<(Str
     ui.add_space(4.);
     ui.horizontal(|ui| {
         ui.label("Durations, float and lag in");
-        ui.radio_value(&mut e.draft.unit, DurationUnit::Days, "Days");
-        ui.radio_value(&mut e.draft.unit, DurationUnit::Hours, "Hours");
+        crate::dialog_kit::flow_radio(ui, &mut e.draft.unit, DurationUnit::Days, "Days", true);
+        crate::dialog_kit::flow_radio(ui, &mut e.draft.unit, DurationUnit::Hours, "Hours", true);
         ui.add_space(8.);
         ui.label("Date format");
-        egui::ComboBox::from_id_salt("template_date_format")
-            .selected_text(e.draft.date_format.clone())
-            .show_ui(ui, |ui| {
-                for f in DATE_FORMATS {
-                    ui.selectable_value(&mut e.draft.date_format, f.to_string(), f);
-                }
-            });
+        let sel = DATE_FORMATS.iter().position(|&f| f == e.draft.date_format);
+        if let (_, Some(idx)) = crate::dialog_kit::flow_combo(
+            ui,
+            "template_date_format",
+            140.,
+            &DATE_FORMATS,
+            sel,
+            true,
+        ) {
+            e.draft.date_format = DATE_FORMATS[idx].to_string();
+        }
     });
-    ui.checkbox(
+    crate::dialog_kit::flow_checkbox(
+        ui,
         &mut e.draft.group_by_wbs,
         "Group by WBS (bold band rows with outline levels)",
+        true,
     );
 }

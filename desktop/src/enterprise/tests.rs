@@ -1144,23 +1144,16 @@ fn eps_edits_are_undoable_workspace_steps_and_group_the_projects_view() {
     assert_eq!(d.app.workspace().eps().len(), 1);
     d.key_with(Key::Y, egui::Modifiers::COMMAND);
     assert_eq!(d.app.workspace().eps().len(), 2);
-    // Deleting a node takes its projects (qa_workflows::eps_delete); here
-    // it holds the only project, which is open, so it is refused.
+    // Deleting a node asks before removing the node and its projects
+    // (including the last open project since v0.1.1); No keeps both.
     d.key_with(Key::Y, egui::Modifiers::COMMAND);
     assert_eq!(d.app.workspace().node_of(Some(store_id)), child);
     open_from_menu(&mut d, Dialog::Eps);
     d.click("eps_list_row_1");
     d.click("eps_delete");
-    assert!(d.app.enterprise.ui.confirm.is_none(), "nothing to confirm");
-    assert!(d
-        .app
-        .enterprise
-        .ui
-        .notice
-        .as_ref()
-        .unwrap()
-        .contains("one project always stays open"));
-    d.click("enterprise_msg_ok");
+    assert!(d.app.enterprise.ui.confirm.is_some(), "asks to confirm");
+    assert!(d.app.enterprise.ui.notice.is_none());
+    d.click("enterprise_msg_no");
     assert_eq!(d.app.workspace().eps().len(), 2);
     assert_eq!(d.app.workspace().node_of(Some(store_id)), child);
     d.assert_clean("eps");

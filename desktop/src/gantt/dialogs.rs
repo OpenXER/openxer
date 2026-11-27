@@ -79,12 +79,48 @@ pub(crate) struct TextDraft {
     pub error: Option<String>,
 }
 
+/// Cache key for `GanttUi::driving`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DrivingKey {
+    Serial(u64),
+    Hash(u64),
+}
+
+/// Cache key for per-frame calendar nonwork spans in the Gantt header.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GanttCalKey {
+    pub serial: u64,
+    pub cal_start: i64,
+    pub cal_finish: i64,
+    pub lowest_hour: bool,
+    pub shade: bool,
+}
+
+pub(crate) struct GanttCalCache {
+    pub key: GanttCalKey,
+    pub calendars: std::rc::Rc<std::collections::BTreeMap<usize, super::CalendarSpans>>,
+    pub shade_cells: std::rc::Rc<std::collections::BTreeMap<usize, Vec<super::TimeSpan>>>,
+}
+
+/// Spatial index over relationship links for fast visible-viewport queries.
+pub(crate) struct LinkIndexCache {
+    pub serial: u64,
+    pub rows: std::rc::Rc<Vec<crate::grid::Row>>,
+    pub blocks: Vec<Vec<usize>>,
+    pub long_links: Vec<(u32, u32, u32)>,
+    pub long_max_end: Vec<u32>,
+    pub act_offsets: Vec<u32>,
+    pub act_links: Vec<u32>,
+}
+
 /// Dialog and menu state; also caches that the painter reuses across frames.
 #[derive(Default)]
 pub(crate) struct GanttUi {
     pub snapshot: String,
-    pub driving_key: Option<u64>,
-    pub driving: Vec<Option<bool>>,
+    pub driving_key: Option<DrivingKey>,
+    pub driving: std::rc::Rc<Vec<Option<bool>>>,
+    pub cal_cache: Option<GanttCalCache>,
+    pub link_index: Option<LinkIndexCache>,
     pub collapsed_geometry: Vec<BarGeometry>,
     pub bars: Option<BarsDraft>,
     pub options: Option<OptionsDraft>,

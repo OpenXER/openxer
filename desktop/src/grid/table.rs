@@ -56,7 +56,7 @@ pub struct RowMetrics {
     /// Band levels above each row: one indent strip each.
     pub depths: Vec<usize>,
     /// Row tops from the first row's top; one extra entry holds the total.
-    pub offsets: Vec<f32>,
+    pub offsets: Rc<Vec<f32>>,
 }
 
 impl RowMetrics {
@@ -187,25 +187,6 @@ fn drop_button(p: &egui::Painter, b: Rect) {
 }
 
 /// A dotted focus rectangle (every other pixel black).
-fn dotted_rect(p: &egui::Painter, r: Rect) {
-    let dot = |x: f32, y: f32| {
-        chrome::fill(
-            p,
-            Rect::from_min_size(Pos2::new(x, y), Vec2::splat(1.)),
-            INK,
-        );
-    };
-    let (w, h) = (r.width() as i32, r.height() as i32);
-    for k in (0..w).step_by(2) {
-        dot(r.left() + k as f32, r.top());
-        dot(r.left() + k as f32, r.bottom() - 1.);
-    }
-    for k in (0..h).step_by(2) {
-        dot(r.left(), r.top() + k as f32);
-        dot(r.right() - 1., r.top() + k as f32);
-    }
-}
-
 /// Expand box of a band row: 9x9, gray border, white inside, black minus,
 /// plus when collapsed.
 pub(crate) fn expand_box(p: &egui::Painter, min: Pos2, collapsed: bool) {
@@ -270,11 +251,20 @@ impl App {
     pub(crate) fn row_metrics(&self, rows: &[Row]) -> RowMetrics {
         let bands = self.grid.bands.borrow();
         let gs = &self.grid.layout.group_sort;
+        let base = self.activity_row_height();
+        let opt_heights = self.grid.layout.table.optimize_rows.and_then(|_| {
+            self.layout_opts
+                .heights
+                .borrow()
+                .as_ref()
+                .map(|(_, h)| h.clone())
+        });
         let mut heights = Vec::with_capacity(rows.len());
         let mut depths = Vec::with_capacity(rows.len());
         let mut offsets = Vec::with_capacity(rows.len() + 1);
         offsets.push(0.);
         let mut under = 0;
+        let mut top = 0.;
         for row in rows {
             let (height, depth) = match *row {
                 Row::Group(b) => {
@@ -282,17 +272,66 @@ impl App {
                     under = level + 1;
                     (gs.band_height(level), level)
                 }
-                Row::Activity(i) => (self.activity_height(i), under),
+                Row::Activity(i) => (
+                    opt_heights
+                        .as_ref()
+                        .and_then(|m| m.get(&i))
+                        .map_or(base, |h| h.max(base)),
+                    under,
+                ),
             };
             heights.push(height);
             depths.push(depth);
-            offsets.push(offsets.last().unwrap() + height);
+            top += height;
+            offsets.push(top);
         }
         RowMetrics {
             heights,
             depths,
-            offsets,
+            offsets: Rc::new(offsets),
         }
+    }
+
+    /// Cached `row_metrics` shared across still and scrolling frames when `rows`
+    /// and row heights are unchanged.
+    pub(crate) fn row_metrics_shared(&self, rows: &Rc<Vec<Row>>) -> Rc<RowMetrics> {
+        let gs = &self.grid.layout.group_sort;
+        let base_height = self.activity_row_height();
+        let opt_heights = self.grid.layout.table.optimize_rows.and_then(|_| {
+            self.layout_opts
+                .heights
+                .borrow()
+                .as_ref()
+                .map(|(_, h)| h.clone())
+        });
+        let same_opt =
+            |a: &Option<Rc<std::collections::HashMap<usize, f32>>>| match (a, &opt_heights) {
+                (Some(x), Some(y)) => Rc::ptr_eq(x, y),
+                (None, None) => true,
+                _ => false,
+            };
+        if let Some(c) = self.grid.metrics_cache.borrow().as_ref() {
+            if Rc::ptr_eq(&c.rows, rows)
+                && c.base_height == base_height
+                && c.band_heights
+                    .iter()
+                    .enumerate()
+                    .all(|(l, &h)| h == gs.band_height(l))
+                && same_opt(&c.heights)
+            {
+                return c.metrics.clone();
+            }
+        }
+        let band_heights = std::array::from_fn(|l| gs.band_height(l));
+        let metrics = Rc::new(self.row_metrics(rows));
+        *self.grid.metrics_cache.borrow_mut() = Some(super::MetricsCache {
+            rows: rows.clone(),
+            base_height,
+            band_heights,
+            heights: opt_heights,
+            metrics: metrics.clone(),
+        });
+        metrics
     }
 
     /// Screen top and height of each row in the last painted frame.
@@ -715,7 +754,7 @@ impl App {
                 .input(|i| i.pointer.hover_pos())
                 .is_some_and(|pos| table.contains(pos))
         {
-            dotted_rect(&p, table.shrink(1.));
+            super::cell_combo::dotted(&p, table.shrink(1.), INK);
         }
         // The expand box toggles the band; elsewhere a click selects it and
         // a double-click toggles it.
@@ -1015,7 +1054,7 @@ impl App {
                 Pos2::new(button.left() - 1., field.bottom() - 1.),
             );
             chrome::fill(ui.painter(), value, SELECT);
-            dotted_rect(ui.painter(), value);
+            super::cell_combo::dotted(ui.painter(), value, INK);
             ui.painter().with_clip_rect(value).text(
                 Pos2::new(value.left() + 2., cell.top() + TEXT_TOP),
                 Align2::LEFT_TOP,
@@ -1036,28 +1075,33 @@ impl App {
                 .order(egui::Order::Foreground)
                 .fixed_pos(cell.left_bottom())
                 .show(ctx, |ui| {
-                    egui::Frame::popup(ui.style()).show(ui, |ui| {
-                        // Long choices widen the list instead of wrapping.
-                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                        ui.set_min_width(cell.width().max(120.));
-                        // Sized per column and list length, so a list
-                        // never opens at the size of another.
-                        egui::ScrollArea::vertical()
-                            .id_salt((&column.id, choices.len()))
-                            .max_height(220.)
-                            .show(ui, |ui| {
-                                for (n, (key, label)) in choices.iter().enumerate() {
-                                    let r = ui.selectable_label(
-                                        key.eq_ignore_ascii_case(&current),
-                                        if label.is_empty() { " " } else { label },
-                                    );
-                                    rects.push((format!("grid_choice_{n}"), r.clone()));
-                                    if r.clicked() {
-                                        picked = Some(key.clone());
+                    egui::Frame::NONE
+                        .fill(Color32::WHITE)
+                        .stroke(Stroke::new(1.0_f32, chrome::pal::SHADOW))
+                        .inner_margin(egui::Margin::same(1))
+                        .show(ui, |ui| {
+                            ui.spacing_mut().item_spacing = Vec2::ZERO;
+                            let min_w = cell.width().max(120.);
+                            // Sized per column and list length, so a list
+                            // never opens at the size of another.
+                            egui::ScrollArea::vertical()
+                                .id_salt((&column.id, choices.len()))
+                                .max_height(220.)
+                                .show(ui, |ui| {
+                                    for (n, (key, label)) in choices.iter().enumerate() {
+                                        let r = crate::dialog_kit::flow_selectable(
+                                            ui,
+                                            key.eq_ignore_ascii_case(&current),
+                                            if label.is_empty() { " " } else { label },
+                                            min_w,
+                                        );
+                                        rects.push((format!("grid_choice_{n}"), r.clone()));
+                                        if r.clicked() {
+                                            picked = Some(key.clone());
+                                        }
                                     }
-                                }
-                            });
-                    });
+                                });
+                        });
                 });
             for (name, r) in rects {
                 self.action(&name, &r);
@@ -1230,8 +1274,8 @@ impl App {
             .unwrap_or_default()
     }
 
-    /// The date editor's month calendar under `cell`: month arrows and a
-    /// grid of days from Sunday. Returns the popup's rect and a clicked day.
+    /// The date editor's month calendar under `cell`: delegates to the shared
+    /// `details::form::calendar_header_and_days` grid.
     fn calendar_popup(
         &mut self,
         ctx: &egui::Context,
@@ -1240,9 +1284,21 @@ impl App {
         current: chrono::NaiveDate,
     ) -> (Rect, Option<chrono::NaiveDate>) {
         use chrono::Datelike;
-        const DAY_W: f32 = 24.;
-        const DAY_H: f32 = 18.;
+        const COL_W: f32 = 26.;
+        const ROW_H: f32 = 20.;
+        const PAD: f32 = 6.;
+        const HEAD_H: f32 = 22.;
+        const WDAY_H: f32 = 18.;
         let first = month.with_day(1).unwrap_or(month);
+        let next_month_first = if first.month() == 12 {
+            chrono::NaiveDate::from_ymd_opt(first.year() + 1, 1, 1)
+        } else {
+            chrono::NaiveDate::from_ymd_opt(first.year(), first.month() + 1, 1)
+        }
+        .unwrap_or(first);
+        let days_in_month = (next_month_first - first).num_days().max(28) as u32;
+        let start_col = first.weekday().num_days_from_sunday();
+        let grid_rows = (start_col + days_in_month).div_ceil(7).max(5);
         let mut picked = None;
         let mut shift = 0;
         let mut actions: Vec<(String, Rect)> = vec![];
@@ -1250,99 +1306,33 @@ impl App {
             .order(egui::Order::Foreground)
             .fixed_pos(cell.left_bottom())
             .show(ctx, |ui| {
-                let size = Vec2::new(7. * DAY_W + 2., 2. * DAY_H + 6. * DAY_H + 2.);
-                let (r, _) = ui.allocate_exact_size(size, Sense::hover());
+                let size = Vec2::new(
+                    PAD * 2. + 7. * COL_W,
+                    PAD * 2. + HEAD_H + WDAY_H + (grid_rows as f32) * ROW_H,
+                );
+                let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
                 let p = ui.painter();
-                chrome::fill(p, r, Color32::WHITE);
-                chrome::hline(p, r.left(), r.right(), r.top(), chrome::pal::SHADOW);
-                chrome::hline(p, r.left(), r.right(), r.bottom() - 1., chrome::pal::SHADOW);
-                chrome::vline(p, r.left(), r.top(), r.bottom(), chrome::pal::SHADOW);
-                chrome::vline(p, r.right() - 1., r.top(), r.bottom(), chrome::pal::SHADOW);
-                let font = FontId::proportional(FONT_SIZE);
-                let head =
-                    Rect::from_min_size(r.min + Vec2::splat(1.), Vec2::new(7. * DAY_W, DAY_H));
-                chrome::fill(p, head, chrome::pal::FACE);
-                p.text(
-                    head.center(),
-                    Align2::CENTER_CENTER,
-                    first.format("%B %Y").to_string(),
-                    font.clone(),
-                    INK,
+                p.rect_filled(rect, 0., Color32::WHITE);
+                p.rect_stroke(
+                    rect.shrink(0.5),
+                    0.,
+                    Stroke::new(1_f32, chrome::pal::DARK),
+                    egui::StrokeKind::Middle,
                 );
-                for (name, step, at) in [
-                    ("grid_calendar_prev", -1, head.left() + 2.),
-                    ("grid_calendar_next", 1, head.right() - DAY_W + 2.),
-                ] {
-                    let b = Rect::from_min_size(
-                        Pos2::new(at, head.top()),
-                        Vec2::new(DAY_W - 4., DAY_H),
-                    );
-                    let c = b.center();
-                    for k in 0..4 {
-                        let k = k as f32;
-                        // The tallest column is the arrow's base.
-                        let x = if step < 0 { c.x + 1. - k } else { c.x - 2. + k };
-                        chrome::vline(p, x, c.y - 3. + k, c.y + 4. - k, INK);
-                    }
-                    if ui.interact(b, ui.id().with(name), Sense::click()).clicked() {
-                        shift = step;
-                    }
-                    actions.push((name.to_string(), b));
-                }
-                let top = head.bottom();
-                for (n, day) in ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
-                    .iter()
-                    .enumerate()
-                {
-                    p.text(
-                        Pos2::new(head.left() + (n as f32 + 0.5) * DAY_W, top + DAY_H / 2.),
-                        Align2::CENTER_CENTER,
-                        *day,
-                        font.clone(),
-                        chrome::pal::SHADOW,
-                    );
-                }
-                chrome::hline(
-                    p,
-                    head.left() + 2.,
-                    head.right() - 2.,
-                    top + DAY_H - 1.,
-                    chrome::pal::LIGHT,
+                crate::details::form::calendar_header_and_days(
+                    ui,
+                    ui.id().with("grid_cal"),
+                    rect,
+                    first.year(),
+                    first.month(),
+                    current,
+                    false,
+                    false,
+                    "grid_calendar",
+                    &mut |d| shift = d,
+                    &mut |d| picked = Some(d),
+                    &mut actions,
                 );
-                let lead = first.weekday().num_days_from_sunday() as i64;
-                let mut day = first - chrono::Duration::days(lead);
-                for row in 0..6 {
-                    for col in 0..7 {
-                        let b = Rect::from_min_size(
-                            Pos2::new(
-                                head.left() + col as f32 * DAY_W,
-                                top + DAY_H * (row + 1) as f32,
-                            ),
-                            Vec2::new(DAY_W, DAY_H),
-                        );
-                        let ink = if day == current {
-                            chrome::fill(p, b.shrink(1.), SELECT);
-                            Color32::WHITE
-                        } else if day.month() == first.month() {
-                            INK
-                        } else {
-                            chrome::pal::SHADOW
-                        };
-                        p.text(
-                            b.center(),
-                            Align2::CENTER_CENTER,
-                            day.day().to_string(),
-                            font.clone(),
-                            ink,
-                        );
-                        let key = format!("grid_calendar_{}", day.format("%Y-%m-%d"));
-                        if ui.interact(b, ui.id().with(&key), Sense::click()).clicked() {
-                            picked = Some(day);
-                        }
-                        actions.push((key, b));
-                        day += chrono::Duration::days(1);
-                    }
-                }
             });
         for (name, r) in actions {
             self.action_rects

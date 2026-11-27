@@ -192,7 +192,9 @@ impl App {
                                 if column.ends_with("_flag") {
                                     let mut on = r.cells[c] == "Y";
                                     ui.add_space(12.);
-                                    if ui.checkbox(&mut on, "").clicked() {
+                                    if crate::dialog_kit::flow_checkbox(ui, &mut on, "", true)
+                                        .clicked()
+                                    {
                                         flags.push((r.id, c, on));
                                     }
                                     return;

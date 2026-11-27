@@ -347,25 +347,30 @@ pub fn rows_for(doc: &Document, table: &str, task_id: i64, pid: i64) -> Vec<usiz
     let Some(t) = doc.table(table) else {
         return vec![];
     };
-    let has_project = t.field("proj_id").is_some();
+    let Some(task_c) = t.field("task_id") else {
+        return vec![];
+    };
+    let proj_c = t.field("proj_id");
     t.rows
         .iter()
         .enumerate()
         .filter(|(_, r)| {
-            num(t.value(r, "task_id")) == task_id
-                && (!has_project || num(t.value(r, "proj_id")) == pid)
+            num(r.get(task_c).map_or("", String::as_str)) == task_id
+                && proj_c.is_none_or(|c| num(r.get(c).map_or("", String::as_str)) == pid)
         })
         .map(|(i, _)| i)
         .collect()
 }
 pub fn next_id(doc: &Document, table: &str, key: &str) -> i64 {
     doc.table(table)
-        .map(|t| {
-            t.rows
-                .iter()
-                .map(|r| num(t.value(r, key)))
-                .max()
-                .unwrap_or(0)
+        .and_then(|t| {
+            t.field(key).map(|c| {
+                t.rows
+                    .iter()
+                    .map(|r| num(r.get(c).map_or("", String::as_str)))
+                    .max()
+                    .unwrap_or(0)
+            })
         })
         .unwrap_or(0)
         .max(doc.id_floor_of(table))
@@ -407,9 +412,12 @@ pub fn set(doc: &mut Document, name: &str, index: usize, column: &str, value: St
 
 fn task_row(doc: &Document, task_id: i64, pid: i64) -> Option<usize> {
     let t = doc.table("TASK")?;
-    t.rows
-        .iter()
-        .position(|r| num(t.value(r, "task_id")) == task_id && num(t.value(r, "proj_id")) == pid)
+    let task_c = t.field("task_id")?;
+    let proj_c = t.field("proj_id")?;
+    t.rows.iter().position(|r| {
+        num(r.get(task_c).map_or("", String::as_str)) == task_id
+            && num(r.get(proj_c).map_or("", String::as_str)) == pid
+    })
 }
 /// A raw activity column the scheduling model does not carry (for example `suspend_date`).
 pub fn task_value(doc: &Document, task_id: i64, pid: i64, column: &str) -> String {
@@ -434,10 +442,12 @@ pub fn set_task_value(doc: &mut Document, task_id: i64, pid: i64, column: &str, 
 pub fn lookup(doc: &Document, table: &str, key: &str, id: i64, column: &str) -> String {
     doc.table(table)
         .and_then(|t| {
+            let key_c = t.field(key)?;
+            let val_c = t.field(column)?;
             t.rows
                 .iter()
-                .find(|r| num(t.value(r, key)) == id)
-                .map(|r| t.value(r, column).to_string())
+                .find(|r| num(r.get(key_c).map_or("", String::as_str)) == id)
+                .map(|r| r.get(val_c).map_or("", String::as_str).to_string())
         })
         .unwrap_or_default()
 }

@@ -358,7 +358,7 @@ pub fn calendar_drop_down(
         };
 
         let mut popup_rect = Rect::from_min_size(Pos2::new(px, py), Vec2::new(popup_w, popup_h));
-        let mut clicked_inside = false;
+        let clicked_inside = std::cell::Cell::new(false);
         let mut next_view = view;
         let mut picked_date: Option<chrono::NaiveDate> = None;
 
@@ -382,158 +382,30 @@ pub fn calendar_drop_down(
                     egui::StrokeKind::Middle,
                 );
 
-                // Header bar: << < Month Year > >>
-                let head_rect = Rect::from_min_size(
-                    Pos2::new(rect.left() + PAD, rect.top() + PAD),
-                    Vec2::new(COL_W * 7., HEAD_H),
-                );
-                p.rect_filled(head_rect, 0., FACE);
-                let nav_buttons: [(&str, f32, i32); 4] = [
-                    ("<<", head_rect.left() + 2., -12),
-                    ("<", head_rect.left() + 24., -1),
-                    (">", head_rect.right() - 42., 1),
-                    (">>", head_rect.right() - 22., 12),
-                ];
-                for (sym, nx, delta_months) in nav_buttons {
-                    let nr = Rect::from_min_size(
-                        Pos2::new(nx, head_rect.top() + 2.),
-                        Vec2::new(20., HEAD_H - 4.),
-                    );
-                    let nr_resp = ui.interact(nr, id.with(("nav", sym)), Sense::click());
-                    if nr_resp.hovered() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                        p.rect_filled(nr, 0., pal::FOCUS_INNER);
-                    }
-                    p.text(
-                        nr.center(),
-                        Align2::CENTER_CENTER,
-                        sym,
-                        crate::dialog_kit::body_font(),
-                        INK,
-                    );
-                    if nr_resp.clicked() {
-                        clicked_inside = true;
+                // Header bar: << < Month Year > >>, or < Month Year >
+                calendar_header_and_days(
+                    ui,
+                    id,
+                    rect,
+                    year,
+                    month,
+                    *day,
+                    true,
+                    true,
+                    "nav",
+                    &mut |delta_months| {
+                        clicked_inside.set(true);
                         let total = year * 12 + (month as i32 - 1) + delta_months;
                         let ny = total.div_euclid(12).clamp(1900, 2200);
                         let nm = (total.rem_euclid(12) + 1) as u32;
                         next_view = (ny, nm);
-                    }
-                }
-                const MONTHS: [&str; 12] = [
-                    "January",
-                    "February",
-                    "March",
-                    "April",
-                    "May",
-                    "June",
-                    "July",
-                    "August",
-                    "September",
-                    "October",
-                    "November",
-                    "December",
-                ];
-                let title = format!(
-                    "{} {}",
-                    MONTHS[(month.saturating_sub(1) as usize).min(11)],
-                    year
+                    },
+                    &mut |d| {
+                        clicked_inside.set(true);
+                        picked_date = Some(d);
+                    },
+                    &mut Vec::new(),
                 );
-                p.text(
-                    head_rect.center(),
-                    Align2::CENTER_CENTER,
-                    title,
-                    chrome::bold_font(),
-                    INK,
-                );
-
-                // Weekday names
-                let wday_y = head_rect.bottom();
-                const DAYS: [&str; 7] = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-                for (col, label) in DAYS.iter().enumerate() {
-                    let dr = Rect::from_min_size(
-                        Pos2::new(rect.left() + PAD + (col as f32) * COL_W, wday_y),
-                        Vec2::new(COL_W, WDAY_H),
-                    );
-                    p.text(
-                        dr.center(),
-                        Align2::CENTER_CENTER,
-                        *label,
-                        crate::dialog_kit::body_font(),
-                        DISABLED_TEXT,
-                    );
-                }
-
-                // Day cells: single click selects and closes immediately
-                let grid_y = wday_y + WDAY_H;
-                let today = chrono::Local::now().date_naive();
-                for d_num in 1..=days_in_month {
-                    let idx = start_col + (d_num - 1);
-                    let col = idx % 7;
-                    let row = idx / 7;
-                    let cell = Rect::from_min_size(
-                        Pos2::new(
-                            rect.left() + PAD + (col as f32) * COL_W,
-                            grid_y + (row as f32) * ROW_H,
-                        ),
-                        Vec2::new(COL_W, ROW_H),
-                    );
-                    let Some(cell_date) = chrono::NaiveDate::from_ymd_opt(year, month, d_num)
-                    else {
-                        continue;
-                    };
-                    let c_resp = ui.interact(cell, id.with(("day", d_num)), Sense::click());
-                    let is_sel = cell_date == *day;
-                    if c_resp.hovered() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    }
-                    if is_sel {
-                        p.rect_filled(cell.shrink(1.), 0., SELECT);
-                    } else if c_resp.hovered() {
-                        p.rect_filled(cell.shrink(1.), 0., pal::FOCUS_INNER);
-                    }
-                    if cell_date == today && !is_sel {
-                        p.rect_stroke(
-                            cell.shrink(1.5),
-                            0.,
-                            Stroke::new(1_f32, SELECT),
-                            egui::StrokeKind::Middle,
-                        );
-                    }
-                    p.text(
-                        cell.center(),
-                        Align2::CENTER_CENTER,
-                        d_num.to_string(),
-                        crate::dialog_kit::body_font(),
-                        if is_sel { WHITE } else { INK },
-                    );
-                    if c_resp.clicked() {
-                        clicked_inside = true;
-                        picked_date = Some(cell_date);
-                    }
-                }
-
-                // Footer: Today (single-click sets today and closes)
-                let foot_y = grid_y + (grid_rows as f32) * ROW_H + 4.;
-                let today_rect = Rect::from_min_size(
-                    Pos2::new(rect.left() + PAD, foot_y),
-                    Vec2::new(COL_W * 7., FOOT_H),
-                );
-                let t_resp = ui.interact(today_rect, id.with("today"), Sense::click());
-                if t_resp.hovered() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    p.rect_filled(today_rect.shrink(1.), 0., pal::FOCUS_INNER);
-                }
-                p.text(
-                    today_rect.center(),
-                    Align2::CENTER_CENTER,
-                    "Today",
-                    crate::dialog_kit::body_font(),
-                    SELECT,
-                );
-                if t_resp.clicked() {
-                    clicked_inside = true;
-                    picked_date = Some(today);
-                }
             });
 
         view = next_view;
@@ -543,7 +415,10 @@ pub fn calendar_drop_down(
             open = false;
         } else if ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
             open = false;
-        } else if !response.clicked() && !clicked_inside && area_resp.response.clicked_elsewhere() {
+        } else if !response.clicked()
+            && !clicked_inside.get()
+            && area_resp.response.clicked_elsewhere()
+        {
             let ptr = ui.ctx().input(|i| i.pointer.interact_pos());
             if ptr.is_none_or(|p| !popup_rect.contains(p) && !button.contains(p)) {
                 open = false;
@@ -556,6 +431,215 @@ pub fn calendar_drop_down(
         d.insert_temp(view_id, view);
     });
     response
+}
+
+/// Shared calendar popup grid (month/year nav, weekday header, Sunday-first
+/// day matrix, optional Today link) used by `calendar_drop_down` and the
+/// table cell date editor.
+#[allow(clippy::too_many_arguments)]
+pub fn calendar_header_and_days(
+    ui: &mut egui::Ui,
+    id: egui::Id,
+    rect: Rect,
+    year: i32,
+    month: u32,
+    selected: chrono::NaiveDate,
+    year_nav: bool,
+    show_today: bool,
+    action_prefix: &str,
+    on_shift: &mut dyn FnMut(i32),
+    on_pick: &mut dyn FnMut(chrono::NaiveDate),
+    actions: &mut Vec<(String, Rect)>,
+) {
+    use chrono::Datelike;
+    const COL_W: f32 = 26.;
+    const ROW_H: f32 = 20.;
+    const PAD: f32 = 6.;
+    const HEAD_H: f32 = 22.;
+    const WDAY_H: f32 = 18.;
+    const FOOT_H: f32 = 20.;
+    const MONTHS: [&str; 12] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ];
+    const DAYS: [&str; 7] = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+    let p = ui.painter();
+    let head_rect = Rect::from_min_size(
+        Pos2::new(rect.left() + PAD, rect.top() + PAD),
+        Vec2::new(COL_W * 7., HEAD_H),
+    );
+    p.rect_filled(head_rect, 0., FACE);
+    let mut nav: Vec<(&str, &str, f32, i32)> = vec![
+        (
+            "prev",
+            "<",
+            head_rect.left() + if year_nav { 24. } else { 2. },
+            -1,
+        ),
+        (
+            "next",
+            ">",
+            head_rect.right() - if year_nav { 42. } else { 22. },
+            1,
+        ),
+    ];
+    if year_nav {
+        nav.push(("prev_year", "<<", head_rect.left() + 2., -12));
+        nav.push(("next_year", ">>", head_rect.right() - 22., 12));
+    }
+    for (name, sym, nx, delta_months) in nav {
+        let nr = Rect::from_min_size(
+            Pos2::new(nx, head_rect.top() + 2.),
+            Vec2::new(20., HEAD_H - 4.),
+        );
+        let nr_resp = ui.interact(nr, id.with((action_prefix, name)), Sense::click());
+        if nr_resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            p.rect_filled(nr, 0., pal::FOCUS_INNER);
+        }
+        p.text(
+            nr.center(),
+            Align2::CENTER_CENTER,
+            sym,
+            crate::dialog_kit::body_font(),
+            INK,
+        );
+        if nr_resp.clicked() {
+            on_shift(delta_months);
+        }
+        actions.push((format!("{action_prefix}_{name}"), nr));
+    }
+    let title = format!(
+        "{} {}",
+        MONTHS[(month.saturating_sub(1) as usize).min(11)],
+        year
+    );
+    p.text(
+        head_rect.center(),
+        Align2::CENTER_CENTER,
+        title,
+        chrome::bold_font(),
+        INK,
+    );
+
+    let wday_y = head_rect.bottom();
+    for (col, label) in DAYS.iter().enumerate() {
+        let dr = Rect::from_min_size(
+            Pos2::new(rect.left() + PAD + (col as f32) * COL_W, wday_y),
+            Vec2::new(COL_W, WDAY_H),
+        );
+        p.text(
+            dr.center(),
+            Align2::CENTER_CENTER,
+            *label,
+            crate::dialog_kit::body_font(),
+            DISABLED_TEXT,
+        );
+    }
+
+    let first = chrono::NaiveDate::from_ymd_opt(year, month, 1).unwrap_or(selected);
+    let next_month_first = if month == 12 {
+        chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
+    } else {
+        chrono::NaiveDate::from_ymd_opt(year, month + 1, 1)
+    }
+    .unwrap_or(first);
+    let days_in_month = (next_month_first - first).num_days().max(28) as u32;
+    let start_col = first.weekday().num_days_from_sunday();
+    let grid_rows = (start_col + days_in_month).div_ceil(7).max(5);
+    let grid_y = wday_y + WDAY_H;
+    let today = chrono::Local::now().date_naive();
+    let lead = start_col as i64;
+    let mut day = first - chrono::Duration::days(lead);
+    let cells = grid_rows * 7;
+    for idx in 0..cells {
+        let col = idx % 7;
+        let row = idx / 7;
+        let cell = Rect::from_min_size(
+            Pos2::new(
+                rect.left() + PAD + (col as f32) * COL_W,
+                grid_y + (row as f32) * ROW_H,
+            ),
+            Vec2::new(COL_W, ROW_H),
+        );
+        let in_month = day.month() == first.month();
+        let key = format!("{action_prefix}_{}", day.format("%Y-%m-%d"));
+        let c_resp = ui.interact(cell, id.with(&key), Sense::click());
+        let is_sel = day == selected;
+        if c_resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if is_sel {
+            p.rect_filled(cell.shrink(1.), 0., SELECT);
+        } else if c_resp.hovered() {
+            p.rect_filled(cell.shrink(1.), 0., pal::FOCUS_INNER);
+        }
+        if day == today && !is_sel {
+            p.rect_stroke(
+                cell.shrink(1.5),
+                0.,
+                Stroke::new(1_f32, SELECT),
+                egui::StrokeKind::Middle,
+            );
+        }
+        let color = if is_sel {
+            WHITE
+        } else if in_month {
+            INK
+        } else {
+            DISABLED_TEXT
+        };
+        p.text(
+            cell.center(),
+            Align2::CENTER_CENTER,
+            day.day().to_string(),
+            crate::dialog_kit::body_font(),
+            color,
+        );
+        if c_resp.clicked() {
+            on_pick(day);
+        }
+        actions.push((key, cell));
+        day += chrono::Duration::days(1);
+    }
+
+    if show_today {
+        let foot_y = grid_y + (grid_rows as f32) * ROW_H + 4.;
+        let today_rect = Rect::from_min_size(
+            Pos2::new(rect.left() + PAD, foot_y),
+            Vec2::new(COL_W * 7., FOOT_H),
+        );
+        let t_resp = ui.interact(
+            today_rect,
+            id.with((action_prefix, "today")),
+            Sense::click(),
+        );
+        if t_resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            p.rect_filled(today_rect.shrink(1.), 0., pal::FOCUS_INNER);
+        }
+        p.text(
+            today_rect.center(),
+            Align2::CENTER_CENTER,
+            "Today",
+            crate::dialog_kit::body_font(),
+            SELECT,
+        );
+        if t_resp.clicked() {
+            on_pick(today);
+        }
+    }
 }
 
 /// A drop-down list over `items`. Returns the picked index when it changed.

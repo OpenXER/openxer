@@ -192,26 +192,41 @@ impl App {
                     .iter()
                     .find(|t| Some(t.id) == pick.type_id)
                     .map_or(String::new(), |t| t.name.clone());
-                egui::ComboBox::from_id_salt("assignment_code_type")
-                    .width(220.)
-                    .selected_text(current)
-                    .show_ui(ui, |ui| {
+                crate::dialog_kit::flow_combo_with(
+                    ui,
+                    "assignment_code_type",
+                    220.,
+                    &current,
+                    true,
+                    |ui| {
                         for t in &types {
-                            if ui
-                                .selectable_value(&mut pick.type_id, Some(t.id), &t.name)
-                                .clicked()
+                            if crate::dialog_kit::flow_selectable(
+                                ui,
+                                pick.type_id == Some(t.id),
+                                &t.name,
+                                216.,
+                            )
+                            .clicked()
                             {
+                                pick.type_id = Some(t.id);
                                 pick.value = None;
+                                ui.close();
                             }
                         }
-                    });
+                    },
+                );
                 egui::ScrollArea::vertical()
                     .max_height(180.)
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
                         for (n, v) in values.iter().enumerate() {
                             let text = format!("{}{}  {}", "  ".repeat(v.depth), v.short, v.name);
-                            let r = ui.selectable_label(pick.value == Some(v.id), text);
+                            let r = crate::dialog_kit::flow_selectable(
+                                ui,
+                                pick.value == Some(v.id),
+                                &text,
+                                240.,
+                            );
                             self.action(&format!("assignment_pick_value_{n}"), &r);
                             if r.clicked() {
                                 pick.value = Some(v.id);

@@ -362,34 +362,6 @@ fn optional_id(s: &str) -> Option<i64> {
     s.trim().parse::<i64>().ok().filter(|v| *v != 0)
 }
 
-/// The model assignment for a TASKRSRC row (shared with the importer).
-/// `activity_rem` is the activity's remaining duration: an assignment without
-/// units per hour has no duration of its own and spans the activity (the reference
-/// stores such an assignment's dates over the whole activity, 369 A26990).
-pub(crate) fn model_assignment(t: &Table, r: &[String], activity_rem: i64) -> Assignment {
-    let rate = t
-        .value(r, "remain_qty_per_hr")
-        .parse::<f64>()
-        .unwrap_or(0.0);
-    let qty = t.value(r, "remain_qty").parse::<f64>().unwrap_or(0.0);
-    let lag = hours(t.value(r, "relag_drtn_hr_cnt"));
-    let flag = t.value(r, "rollup_dates_flag");
-    Assignment {
-        rsrc_id: num(t.value(r, "rsrc_id")),
-        rollup: flag == "Y",
-        rollup_present: !flag.is_empty(),
-        rem: if rate != 0.0 {
-            (qty / rate * 60.0).round_ties_even() as i64
-        } else {
-            activity_rem
-        },
-        remain_lag: lag,
-        relag: lag,
-        rem_hours_bits: (rate != 0.0 && qty != 0.0).then(|| (qty / rate).to_bits()),
-        ..Assignment::default()
-    }
-}
-
 /// Rebuild every activity's model assignments and resource-driven flag from
 /// the TASKRSRC rows of `doc`, in file order (shared with the importer).
 pub(crate) fn apply_rows(
@@ -406,17 +378,23 @@ pub(crate) fn apply_rows(
         .collect();
     // A Resource Dependent activity works on its resources' calendars, so
     // its assignments with units carry them (saved reference probes 814, 816).
+    let cal_pos: HashMap<&str, usize> = calendars
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| has_recurring_work(&c.cal))
+        .map(|(i, c)| (c.id.as_str(), i))
+        .collect();
     let resource_calendar: HashMap<i64, usize> = doc.table("RSRC").map_or_else(HashMap::new, |t| {
+        let cols = t.field_index();
+        let c_clndr = cols.col("clndr_id");
+        let c_rsrc = cols.col("rsrc_id");
         t.rows
             .iter()
             .filter_map(|r| {
-                let id = t.value(r, "clndr_id");
-                // A calendar without recurring work could not place the work;
-                // such an assignment stays on the activity's calendar.
-                calendars
-                    .iter()
-                    .position(|c| c.id == id && has_recurring_work(&c.cal))
-                    .map(|c| (num(t.value(r, "rsrc_id")), c))
+                let id = FieldIndex::get(r, c_clndr);
+                cal_pos
+                    .get(id)
+                    .map(|&c| (num(FieldIndex::get(r, c_rsrc)), c))
             })
             .collect()
     });
@@ -425,24 +403,45 @@ pub(crate) fn apply_rows(
     }
     let mut driving: HashMap<i64, bool> = HashMap::new();
     if let Some(t) = doc.table("TASKRSRC") {
+        let cols = t.field_index();
+        let c_proj = cols.col("proj_id");
+        let c_task = cols.col("task_id");
+        let c_flag = cols.col("rollup_dates_flag");
+        let c_rsrc = cols.col("rsrc_id");
+        let c_rate = cols.col("remain_qty_per_hr");
+        let c_qty = cols.col("remain_qty");
+        let c_lag = cols.col("relag_drtn_hr_cnt");
         for r in &t.rows {
-            if num(t.value(r, "proj_id")) != pid {
+            if num(FieldIndex::get(r, c_proj)) != pid {
                 continue;
             }
-            let task = num(t.value(r, "task_id"));
-            if t.value(r, "rollup_dates_flag") == "Y" {
+            let task = num(FieldIndex::get(r, c_task));
+            let flag = FieldIndex::get(r, c_flag);
+            if flag == "Y" {
                 driving.insert(task, true);
             }
             if let Some(&i) = index.get(&task) {
                 let rem = activities[i].rem;
-                let mut assignment = model_assignment(t, r, rem);
-                let units = t
-                    .value(r, "remain_qty_per_hr")
-                    .parse::<f64>()
-                    .unwrap_or(0.0)
-                    > 0.0
-                    && t.value(r, "remain_qty").parse::<f64>().unwrap_or(0.0) > 0.0;
-                if activities[i].task_type == TaskType::Resource && units {
+                let rate_s = FieldIndex::get(r, c_rate);
+                let qty_s = FieldIndex::get(r, c_qty);
+                let rate = rate_s.parse::<f64>().unwrap_or(0.0);
+                let qty = qty_s.parse::<f64>().unwrap_or(0.0);
+                let lag = hours(FieldIndex::get(r, c_lag));
+                let mut assignment = Assignment {
+                    rsrc_id: num(FieldIndex::get(r, c_rsrc)),
+                    rollup: flag == "Y",
+                    rollup_present: !flag.is_empty(),
+                    rem: if rate != 0.0 {
+                        (qty / rate * 60.0).round_ties_even() as i64
+                    } else {
+                        rem
+                    },
+                    remain_lag: lag,
+                    relag: lag,
+                    rem_hours_bits: (rate != 0.0 && qty != 0.0).then(|| (qty / rate).to_bits()),
+                    ..Assignment::default()
+                };
+                if activities[i].task_type == TaskType::Resource && rate > 0.0 && qty > 0.0 {
                     assignment.cal = resource_calendar.get(&assignment.rsrc_id).copied();
                 }
                 activities[i].assignments.push(assignment);
@@ -451,11 +450,15 @@ pub(crate) fn apply_rows(
     }
     let mut kinds: HashMap<i64, &str> = HashMap::new();
     if let Some(t) = doc.table("TASK") {
+        let cols = t.field_index();
+        let c_proj = cols.col("proj_id");
+        let c_task = cols.col("task_id");
+        let c_dur = cols.col("duration_type");
         for r in &t.rows {
-            if num(t.value(r, "proj_id")) == pid {
+            if num(FieldIndex::get(r, c_proj)) == pid {
                 kinds
-                    .entry(num(t.value(r, "task_id")))
-                    .or_insert(t.value(r, "duration_type"));
+                    .entry(num(FieldIndex::get(r, c_task)))
+                    .or_insert(FieldIndex::get(r, c_dur));
             }
         }
     }
@@ -1853,90 +1856,145 @@ impl ProjectData {
             .enumerate()
             .map(|(i, a)| (a.task_id, i))
             .collect();
-        let Some(rows) = self.document.table("TASKRSRC").map(|t| t.rows.len()) else {
-            return 0;
+        let mut rsrc_cols = match self.document.table("TASKRSRC") {
+            Some(t) => t.field_index(),
+            None => return 0,
         };
+        let rows = self.document.table("TASKRSRC").expect("present").rows.len();
         let leveling = self.model.options.do_level;
         // Remaining units first: they decide the assignment durations below.
         let mut retimed = vec![];
-        for row in 0..rows {
+        {
             let t = self.document.table("TASKRSRC").expect("present");
-            let r = &t.rows[row];
-            if num(t.value(r, "proj_id")) != pid || t.value(r, "rollup_dates_flag") != "Y" {
-                continue;
-            }
-            let Some(&i) = index.get(&num(t.value(r, "task_id"))) else {
-                continue;
-            };
-            let a = &self.model.activities[i];
-            if a.is_completed()
-                || !a.uses_expected_finish(&self.model.options, leveling)
-                || !matches!(a.task_type, TaskType::Task | TaskType::Resource)
-            {
-                continue;
-            }
-            let rate = float(t.value(r, "remain_qty_per_hr"));
-            let qty = float(t.value(r, "remain_qty"));
-            let current = if rate > 0. {
-                units_minutes(qty, rate, 0.)
-            } else {
-                None
-            };
-            if current.is_some_and(|m| m != a.rem) || (rate <= 0. && qty > 0.) {
-                retimed.push((row, a.task_id, a.rem));
-            }
-        }
-        for (row, task_id, rem) in retimed {
-            let kind = DurationType::from_code(&task_column(
-                &self.document,
-                pid,
-                task_id,
-                "duration_type",
-            ));
-            let t = self.document.table_mut("TASKRSRC");
-            let r = &t.rows[row];
-            let qty = float(t.value(r, "remain_qty"));
-            let rate = float(t.value(r, "remain_qty_per_hr"));
-            let work = Work {
-                units: qty,
-                per_hour: rate,
-                hours: rem as f64 / 60.,
-            };
-            let w = if rate > 0. {
-                recalculate(kind, Changed::Duration, work)
-            } else {
-                // Units without a units/time have no duration to scale: the
-                // units stay and the units/time spreads them over the new
-                // remaining duration, whatever the duration type.
-                recalculate(DurationType::FixedUnits, Changed::Duration, work)
-            };
-            if (w.units - qty).abs() > 1e-9 * qty.abs().max(1.) {
-                t.set(row, "remain_qty", quantity_text(w.units));
-            }
-            if (w.per_hour - rate).abs() > 1e-9 * rate.abs().max(1.) {
-                t.set(row, "remain_qty_per_hr", quantity_text(w.per_hour));
-            }
-            self.update_costs(row);
-            // The model assignment takes the new duration too, so the
-            // assignment the next schedule sees matches the rewritten row
-            // without a rebuild. Model assignments are the activity's rows in
-            // file order.
-            if let Some(i) = index.get(&task_id).copied() {
-                let k = self.assignment_rows(task_id).iter().position(|&r| r == row);
-                if let Some(a) = k.and_then(|k| self.model.activities[i].assignments.get_mut(k)) {
-                    a.rem = rem;
+            let c_proj = rsrc_cols.col("proj_id");
+            let c_flag = rsrc_cols.col("rollup_dates_flag");
+            let c_task = rsrc_cols.col("task_id");
+            let c_rate = rsrc_cols.col("remain_qty_per_hr");
+            let c_qty = rsrc_cols.col("remain_qty");
+            for (row, r) in t.rows.iter().enumerate() {
+                if num(FieldIndex::get(r, c_proj)) != pid || FieldIndex::get(r, c_flag) != "Y" {
+                    continue;
+                }
+                let Some(&i) = index.get(&num(FieldIndex::get(r, c_task))) else {
+                    continue;
+                };
+                let a = &self.model.activities[i];
+                if a.is_completed()
+                    || !a.uses_expected_finish(&self.model.options, leveling)
+                    || !matches!(a.task_type, TaskType::Task | TaskType::Resource)
+                {
+                    continue;
+                }
+                let rate = float(FieldIndex::get(r, c_rate));
+                let qty = float(FieldIndex::get(r, c_qty));
+                let current = if rate > 0. {
+                    units_minutes(qty, rate, 0.)
+                } else {
+                    None
+                };
+                if current.is_some_and(|m| m != a.rem) || (rate <= 0. && qty > 0.) {
+                    retimed.push((row, a.task_id, a.rem));
                 }
             }
         }
+        if !retimed.is_empty() {
+            let mut task_kinds: HashMap<i64, DurationType> = HashMap::new();
+            if let Some(tasks) = self.document.table("TASK") {
+                let tcols = tasks.field_index();
+                let c_proj = tcols.col("proj_id");
+                let c_task = tcols.col("task_id");
+                let c_dur = tcols.col("duration_type");
+                for r in &tasks.rows {
+                    if num(FieldIndex::get(r, c_proj)) == pid {
+                        task_kinds
+                            .entry(num(FieldIndex::get(r, c_task)))
+                            .or_insert_with(|| DurationType::from_code(FieldIndex::get(r, c_dur)));
+                    }
+                }
+            }
+            let mut by_task: HashMap<i64, Vec<usize>> = HashMap::new();
+            {
+                let t = self.document.table("TASKRSRC").expect("present");
+                let c_proj = rsrc_cols.col("proj_id");
+                let c_task = rsrc_cols.col("task_id");
+                for (row_idx, r) in t.rows.iter().enumerate() {
+                    if num(FieldIndex::get(r, c_proj)) == pid {
+                        by_task
+                            .entry(num(FieldIndex::get(r, c_task)))
+                            .or_default()
+                            .push(row_idx);
+                    }
+                }
+            }
+            let c_qty = rsrc_cols.col("remain_qty");
+            let c_rate = rsrc_cols.col("remain_qty_per_hr");
+            for (row, task_id, rem) in retimed {
+                let kind = task_kinds
+                    .get(&task_id)
+                    .copied()
+                    .unwrap_or(DurationType::FixedDurationAndUnits);
+                let t = self.document.table_mut("TASKRSRC");
+                let r = &t.rows[row];
+                let qty = float(FieldIndex::get(r, c_qty));
+                let rate = float(FieldIndex::get(r, c_rate));
+                let work = Work {
+                    units: qty,
+                    per_hour: rate,
+                    hours: rem as f64 / 60.,
+                };
+                let w = if rate > 0. {
+                    recalculate(kind, Changed::Duration, work)
+                } else {
+                    // Units without a units/time have no duration to scale: the
+                    // units stay and the units/time spreads them over the new
+                    // remaining duration, whatever the duration type.
+                    recalculate(DurationType::FixedUnits, Changed::Duration, work)
+                };
+                if (w.units - qty).abs() > 1e-9 * qty.abs().max(1.) {
+                    rsrc_cols.set(t, row, "remain_qty", quantity_text(w.units));
+                }
+                if (w.per_hour - rate).abs() > 1e-9 * rate.abs().max(1.) {
+                    rsrc_cols.set(t, row, "remain_qty_per_hr", quantity_text(w.per_hour));
+                }
+                self.update_costs(row);
+                // The model assignment takes the new duration too, so the
+                // assignment the next schedule sees matches the rewritten row
+                // without a rebuild. Model assignments are the activity's rows in
+                // file order.
+                if let Some(i) = index.get(&task_id).copied() {
+                    let k = by_task
+                        .get(&task_id)
+                        .and_then(|v| v.iter().position(|&r| r == row));
+                    if let Some(a) = k.and_then(|k| self.model.activities[i].assignments.get_mut(k))
+                    {
+                        a.rem = rem;
+                    }
+                }
+            }
+        }
+        let _ = rows;
         let relative = |s: &str| parse_absolute(s).map(|v| v - origin * DAY);
         let mut plan: Vec<(usize, AssignmentDates)> = vec![];
         if let Some(table) = self.document.table("TASKRSRC") {
+            let cols = TaskRsrcCols {
+                remain_qty: rsrc_cols.col("remain_qty"),
+                remain_rate: rsrc_cols.col("remain_qty_per_hr"),
+                target_qty: rsrc_cols.col("target_qty"),
+                target_rate: rsrc_cols.col("target_qty_per_hr"),
+                relag: rsrc_cols.col("relag_drtn_hr_cnt"),
+                target_lag: rsrc_cols.col("target_lag_drtn_hr_cnt"),
+                act_start: rsrc_cols.col("act_start_date"),
+                act_end: rsrc_cols.col("act_end_date"),
+            };
+            let c_proj = rsrc_cols.col("proj_id");
+            let c_task = rsrc_cols.col("task_id");
+            plan.reserve(table.rows.len());
             for (row, r) in table.rows.iter().enumerate() {
-                if num(table.value(r, "proj_id")) != pid {
+                if num(FieldIndex::get(r, c_proj)) != pid {
                     continue;
                 }
-                if let Some(&i) = index.get(&num(table.value(r, "task_id"))) {
-                    plan.push((row, self.assignment_dates_at(row, i)));
+                if let Some(&i) = index.get(&num(FieldIndex::get(r, c_task))) {
+                    plan.push((row, self.assignment_dates_at_cols(table, &cols, row, i)));
                 }
             }
         }
@@ -1945,10 +2003,11 @@ impl ProjectData {
         for (row, d) in plan {
             let mut w = RowWriter {
                 table: &mut *table,
+                cols: &mut rsrc_cols,
                 row,
                 fresh: false,
             };
-            let before = w.table.rows[row].clone();
+            let mut row_changed = false;
             for (k, v) in [
                 ("act_start_date", d.act_start),
                 ("act_end_date", d.act_finish),
@@ -1959,9 +2018,19 @@ impl ProjectData {
                 ("target_start_date", d.target_start),
                 ("target_end_date", d.target_finish),
             ] {
-                w.put(k, |old| relative(old) == v, || date_string(origin, v));
+                row_changed |= w.put(
+                    k,
+                    |old| {
+                        if old.is_empty() {
+                            v.is_none()
+                        } else {
+                            relative(old) == v
+                        }
+                    },
+                    || date_string(origin, v),
+                );
             }
-            if w.table.rows[row] != before {
+            if row_changed {
                 changed += 1;
             }
         }
@@ -1971,8 +2040,28 @@ impl ProjectData {
     /// The dates of assignment row `row` of the activity at model index `i`,
     /// as [`Self::write_assignment_schedule`] writes them.
     fn assignment_dates_at(&self, row: usize, i: usize) -> AssignmentDates {
-        let origin = self.model.origin_serial;
         let table = self.document.table("TASKRSRC").expect("a row exists");
+        let rsrc_cols = table.field_index();
+        let cols = TaskRsrcCols {
+            remain_qty: rsrc_cols.col("remain_qty"),
+            remain_rate: rsrc_cols.col("remain_qty_per_hr"),
+            target_qty: rsrc_cols.col("target_qty"),
+            target_rate: rsrc_cols.col("target_qty_per_hr"),
+            relag: rsrc_cols.col("relag_drtn_hr_cnt"),
+            target_lag: rsrc_cols.col("target_lag_drtn_hr_cnt"),
+            act_start: rsrc_cols.col("act_start_date"),
+            act_end: rsrc_cols.col("act_end_date"),
+        };
+        self.assignment_dates_at_cols(table, &cols, row, i)
+    }
+    fn assignment_dates_at_cols(
+        &self,
+        table: &Table,
+        cols: &TaskRsrcCols,
+        row: usize,
+        i: usize,
+    ) -> AssignmentDates {
+        let origin = self.model.origin_serial;
         let r = &table.rows[row];
         let a = &self.model.activities[i];
         // A calendar with no recurring work could never place the work (the
@@ -1983,35 +2072,27 @@ impl ProjectData {
             .filter(|cal| has_recurring_work(&cal.cal));
         let own = matches!(a.task_type, TaskType::Task | TaskType::Resource);
         let started = a.status != StatusType::NotStarted;
-        let duration = |qty: &str, rate: &str, fallback: i64| {
-            let rate = float(rate);
+        let duration = |qty: Option<usize>, rate: Option<usize>, fallback: i64| {
+            let rate = float(FieldIndex::get(r, rate));
             if own && rate > 0. {
-                units_minutes(float(qty), rate, 0.).unwrap_or(fallback)
+                units_minutes(float(FieldIndex::get(r, qty)), rate, 0.).unwrap_or(fallback)
             } else {
                 fallback
             }
         };
-        let lag = |k: &str| {
+        let lag = |k: Option<usize>| {
             if own && !started {
-                hours(table.value(r, k))
+                hours(FieldIndex::get(r, k))
             } else {
                 0
             }
         };
-        let remaining = duration(
-            table.value(r, "remain_qty"),
-            table.value(r, "remain_qty_per_hr"),
-            a.rem,
-        );
+        let remaining = duration(cols.remain_qty, cols.remain_rate, a.rem);
         let original = self
             .details
             .get(&a.task_id)
             .map_or(0, |d| d.original_duration);
-        let budgeted = duration(
-            table.value(r, "target_qty"),
-            table.value(r, "target_qty_per_hr"),
-            original,
-        );
+        let budgeted = duration(cols.target_qty, cols.target_rate, original);
         // The activity's own span, or one offset by the assignment's lag
         // and duration.
         let span = |start: Option<i64>, finish: Option<i64>, lag: i64, length: i64, whole: i64| {
@@ -2039,13 +2120,7 @@ impl ProjectData {
         let (rs, re) = if completed {
             (None, None)
         } else {
-            span(
-                a.restart,
-                a.reend,
-                lag("relag_drtn_hr_cnt"),
-                remaining,
-                a.rem,
-            )
+            span(a.restart, a.reend, lag(cols.relag), remaining, a.rem)
         };
         let (ls, le) = if completed {
             (None, None)
@@ -2053,7 +2128,7 @@ impl ProjectData {
             span(
                 a.rem_late_start,
                 a.rem_late_finish,
-                lag("relag_drtn_hr_cnt"),
+                lag(cols.relag),
                 remaining,
                 a.rem,
             )
@@ -2062,7 +2137,7 @@ impl ProjectData {
             a.target_start,
             a.target_finish,
             if own {
-                hours(table.value(r, "target_lag_drtn_hr_cnt"))
+                hours(FieldIndex::get(r, cols.target_lag))
             } else {
                 0
             },
@@ -2072,12 +2147,13 @@ impl ProjectData {
         // Actual dates entered on the assignment are kept while they are
         // consistent with the activity and the data date (see
         // `actual_dates_valid`); otherwise they follow the activity.
-        let stored = |k: &str| parse_absolute(table.value(r, k)).map(|v| v - origin * DAY);
+        let stored =
+            |k: Option<usize>| parse_absolute(FieldIndex::get(r, k)).map(|v| v - origin * DAY);
         let data_date = self.model.project.data_date;
         let own_start =
-            stored("act_start_date").filter(|&s| started && actual_start_valid(a, data_date, s));
+            stored(cols.act_start).filter(|&s| started && actual_start_valid(a, data_date, s));
         let act_start = own_start.or(a.act_start);
-        let own_finish = stored("act_end_date")
+        let own_finish = stored(cols.act_end)
             .filter(|&f| started && actual_finish_valid(a, data_date, act_start, f));
         AssignmentDates {
             act_start,
@@ -2090,6 +2166,17 @@ impl ProjectData {
             target_finish: te,
         }
     }
+}
+
+struct TaskRsrcCols {
+    remain_qty: Option<usize>,
+    remain_rate: Option<usize>,
+    target_qty: Option<usize>,
+    target_rate: Option<usize>,
+    relag: Option<usize>,
+    target_lag: Option<usize>,
+    act_start: Option<usize>,
+    act_end: Option<usize>,
 }
 
 /// An assignment actual start is kept when it is not after the data date, the

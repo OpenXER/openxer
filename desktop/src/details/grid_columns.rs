@@ -637,8 +637,12 @@ impl App {
                                         area.show(ui, |ui| {
                                             for (n, item) in items.iter().enumerate() {
                                                 group_head(ui, heads, n, key, rects);
-                                                let r =
-                                                    ui.selectable_label(*pick == Some(n), *item);
+                                                let r = crate::dialog_kit::flow_selectable(
+                                                    ui,
+                                                    *pick == Some(n),
+                                                    item,
+                                                    0.,
+                                                );
                                                 if r.clicked() {
                                                     *pick = Some(n);
                                                 }

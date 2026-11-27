@@ -587,9 +587,11 @@ fn load_sorts_by_a_field_either_way() {
         json!({"command":"load","input":xer,"sort":"-early_finish","limit":3,"fields":["early_finish"]}),
     );
     let rows = latest["result"]["activities"].as_array().unwrap();
-    // PM0910 and PM0920 finish together, in project order.
-    assert_eq!(rows[0]["task_code"], "PM0910", "{rows:?}");
-    assert_eq!(rows[1]["task_code"], "PM0920");
+    // LOE010, LOE030, and PM0910 finish together, in project order.
+    assert_eq!(rows[0]["task_code"], "LOE010", "{rows:?}");
+    assert_eq!(rows[1]["task_code"], "LOE030");
+    assert_eq!(rows[2]["task_code"], "PM0910");
+    assert!(rows[0]["early_finish"].as_str() >= rows[1]["early_finish"].as_str());
     assert!(rows[1]["early_finish"].as_str() >= rows[2]["early_finish"].as_str());
     let all = run(
         json!({"command":"load","input":xer,"sort":"total_float_minutes","limit":2000,"fields":["total_float_minutes"]}),
@@ -625,7 +627,7 @@ fn load_sorts_by_a_field_either_way() {
     };
     assert_eq!(
         response(dispatch(*command))["result"]["activities"][0]["task_code"],
-        "PM0910"
+        "LOE010"
     );
 }
 

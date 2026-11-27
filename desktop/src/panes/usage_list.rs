@@ -1536,14 +1536,12 @@ impl App {
         let tip = "Turn off Show All Projects to filter the activities: the table lists this project only.";
         controls.horizontal(|ui| {
             let mut resource = self.panes.usage.resource_filter;
-            let r = ui
-                .add_enabled(!blocked, egui::Checkbox::new(&mut resource, "Resource"))
+            let r = crate::dialog_kit::flow_checkbox(ui, &mut resource, "Resource", !blocked)
                 .on_disabled_hover_text(tip);
             self.action(&format!("usage_list_{pane}_resource"), &r);
             self.panes.usage.resource_filter = resource;
             let mut period = self.panes.usage.time_period;
-            let r = ui
-                .add_enabled(!blocked, egui::Checkbox::new(&mut period, "Time Period"))
+            let r = crate::dialog_kit::flow_checkbox(ui, &mut period, "Time Period", !blocked)
                 .on_disabled_hover_text(tip)
                 .on_hover_text("Click a period on the profile or a spreadsheet column to pick it.");
             self.action(&format!("usage_list_{pane}_time_period"), &r);

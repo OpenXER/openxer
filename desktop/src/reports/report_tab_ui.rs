@@ -9,7 +9,7 @@ use crate::print::viewer;
 use crate::print::viewer_ui::{self, text_button};
 use crate::views::{sheet, MainView};
 use crate::App;
-use eframe::egui::{self, Color32, Pos2, Rect, RichText, Sense, Shape, Stroke, Vec2};
+use eframe::egui::{self, Color32, Pos2, Rect, Sense, Shape, Stroke, Vec2};
 
 /// Height of the header line above the viewer.
 const INFO: f32 = 22.;
@@ -97,10 +97,8 @@ impl App {
                     ..
                 } = &mut t;
                 let mut host_buttons = |bar: &mut egui::Ui, acts: &mut Vec<(String, Rect)>| {
-                    let export = bar.add_enabled(
-                        has_pages,
-                        egui::Button::new(RichText::new("Export  ").font(chrome::ui_font())),
-                    );
+                    let export =
+                        crate::dialog_kit::toolbar_button(bar, "Export  ", has_pages, false);
                     acts.push(("report_tab_export".into(), export.rect));
                     paint_drop_arrow(bar.painter(), export.rect, has_pages);
                     egui::Popup::menu(&export)

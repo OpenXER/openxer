@@ -186,36 +186,32 @@ impl App {
                             ui.label("Role");
                             field(ui, &c[3], 260.);
                             let mut on = v.primary;
-                            if ui
-                                .add_enabled(
-                                    v.rsrc_id.is_some(),
-                                    egui::Checkbox::new(&mut on, "Primary Resource"),
-                                )
-                                .changed()
+                            if crate::dialog_kit::flow_checkbox(
+                                ui,
+                                &mut on,
+                                "Primary Resource",
+                                v.rsrc_id.is_some(),
+                            )
+                            .changed()
                             {
                                 primary = Some((row, on));
                             }
                             ui.end_row();
                             let number = |ui: &mut egui::Ui,
                                           value: f64,
-                                          speed: f64,
+                                          _speed: f64,
                                           show: fn(f64) -> String,
                                           parse: fn(&str) -> Option<f64>,
                                           enabled: bool| {
-                                let mut x = value;
-                                let r = ui
-                                    .add_enabled_ui(enabled, |ui| {
-                                        ui.add_sized(
-                                            [110., 18.],
-                                            egui::DragValue::new(&mut x)
-                                                .range(0.0..=1.0e9)
-                                                .speed(speed)
-                                                .custom_formatter(move |v, _| show(v))
-                                                .custom_parser(parse),
-                                        )
-                                    })
-                                    .inner;
-                                (r.changed() && (x - value).abs() > 1e-9).then_some(x)
+                                crate::dialog_kit::flow_parsed_number(
+                                    ui,
+                                    ui.next_auto_id(),
+                                    value,
+                                    110.,
+                                    show,
+                                    move |t| parse(t).map(|v| v.clamp(0.0, 1.0e9)),
+                                    enabled,
+                                )
                             };
                             ui.label("Budgeted Units");
                             if let Some(x) =
@@ -298,19 +294,29 @@ impl App {
                                 .iter()
                                 .find(|(c, _, _)| *c == v.rate_type)
                                 .map_or(v.rate_type.as_str(), |(_, l, _)| l);
-                            egui::ComboBox::from_id_salt("assignment_window_rate_type")
-                                .selected_text(label)
-                                .width(120.)
-                                .show_ui(ui, |ui| {
+                            crate::dialog_kit::flow_combo_with(
+                                ui,
+                                "assignment_window_rate_type",
+                                120.,
+                                label,
+                                true,
+                                |ui| {
                                     for (code, label, _) in RATE_TYPES {
-                                        if ui.selectable_label(v.rate_type == code, label).clicked()
-                                            && v.rate_type != code
+                                        let on = v.rate_type == code;
+                                        if crate::dialog_kit::flow_selectable(ui, on, label, 116.)
+                                            .clicked()
                                         {
-                                            edits
-                                                .push((row, AssignmentEdit::RateType(code.into())));
+                                            if !on {
+                                                edits.push((
+                                                    row,
+                                                    AssignmentEdit::RateType(code.into()),
+                                                ));
+                                            }
+                                            ui.close();
                                         }
                                     }
-                                });
+                                },
+                            );
                             ui.end_row();
                             ui.label("Remaining Duration");
                             let mut m = v.remaining_duration;
@@ -426,17 +432,31 @@ impl App {
                                 )
                             })
                         };
-                        egui::ComboBox::from_id_salt("assignment_window_add_activity")
-                            .selected_text(name(*task))
-                            .width(260.)
-                            .show_ui(ui, |ui| {
+                        crate::dialog_kit::flow_combo_with(
+                            ui,
+                            "assignment_window_add_activity",
+                            260.,
+                            &name(*task),
+                            true,
+                            |ui| {
                                 for a in self.project.model.activities.iter().filter(|a| {
                                     !matches!(a.task_type, TaskType::Mile | TaskType::FinMile)
                                 }) {
                                     let text = name(Some(a.task_id));
-                                    ui.selectable_value(task, Some(a.task_id), text);
+                                    if crate::dialog_kit::flow_selectable(
+                                        ui,
+                                        *task == Some(a.task_id),
+                                        &text,
+                                        256.,
+                                    )
+                                    .clicked()
+                                    {
+                                        *task = Some(a.task_id);
+                                        ui.close();
+                                    }
                                 }
-                            });
+                            },
+                        );
                         ui.label("Resource");
                         let resources: Vec<(i64, String)> =
                             self.project.document.table("RSRC").map_or(vec![], |t| {
@@ -457,14 +477,28 @@ impl App {
                         let shown = rsrc
                             .and_then(|id| resources.iter().find(|(r, _)| *r == id))
                             .map_or(String::new(), |(_, n)| n.clone());
-                        egui::ComboBox::from_id_salt("assignment_window_add_resource")
-                            .selected_text(shown)
-                            .width(200.)
-                            .show_ui(ui, |ui| {
+                        crate::dialog_kit::flow_combo_with(
+                            ui,
+                            "assignment_window_add_resource",
+                            200.,
+                            &shown,
+                            true,
+                            |ui| {
                                 for (id, text) in &resources {
-                                    ui.selectable_value(rsrc, Some(*id), text);
+                                    if crate::dialog_kit::flow_selectable(
+                                        ui,
+                                        *rsrc == Some(*id),
+                                        text,
+                                        196.,
+                                    )
+                                    .clicked()
+                                    {
+                                        *rsrc = Some(*id);
+                                        ui.close();
+                                    }
                                 }
-                            });
+                            },
+                        );
                     });
                 }
                 ui.add_space(6.);

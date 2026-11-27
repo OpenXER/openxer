@@ -4,6 +4,15 @@ All notable changes to OpenXER are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/). The newest release is at the top.
 
+## [0.1.2] - 2026-11-27
+
+### Changed
+- Major performance optimizations for large schedules (tested on 35,000-activity schedules) across the CPM engine, XER loader/editor, and desktop UI (pre-indexed lookups, faster calendar/WBS/grid/Gantt paths, reduced idle and scroll frame times).
+- Unified desktop UI controls across dialogs, view menus, toolbars, pickers, and detail tabs onto shared `dialog_kit`, `chrome`, `details::form`, and `views::sheet` components, backed by the `no_raw_egui_controls_in_desktop_ui` regression guard.
+
+### Fixed
+- Updated EPS folder deletion and sample-project sort tests to match v0.1.1 behavior.
+
 ## [0.1.1] - 2026-11-25
 
 ### Added

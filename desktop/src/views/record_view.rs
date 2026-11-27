@@ -591,27 +591,36 @@ impl App {
                 let caption = format!("Display: {}", spec.display);
                 let header = sheet::header_button(ui, spec.id, bar, &caption);
                 self.action(&format!("{}_layout", spec.id), &header);
-                egui::Popup::menu(&header).show(|ui| {
-                    menu(self, ui);
-                    ui.separator();
-                    let s = state(&mut self.views);
-                    if ui.button("Expand All").clicked() {
-                        s.collapsed.clear();
-                        ui.close();
-                    }
-                    if ui.button("Collapse All").clicked() {
-                        s.collapsed = keys
-                            .iter()
-                            .filter_map(|k| match k {
-                                RowKey::Band(id) => Some(*id),
-                                RowKey::Record(_) => None,
-                            })
-                            .collect();
-                        ui.close();
-                    }
-                    ui.separator();
-                    ui.checkbox(&mut s.show_details, "Details");
-                });
+                egui::Popup::menu(&header)
+                    .style(chrome::popup_menu_style)
+                    .show(|ui| {
+                        menu(self, ui);
+                        chrome::menu_separator(ui);
+                        let s = state(&mut self.views);
+                        if chrome::menu_item(ui, chrome::Item::new("Expand All")).clicked() {
+                            s.collapsed.clear();
+                            ui.close();
+                        }
+                        if chrome::menu_item(ui, chrome::Item::new("Collapse All")).clicked() {
+                            s.collapsed = keys
+                                .iter()
+                                .filter_map(|k| match k {
+                                    RowKey::Band(id) => Some(*id),
+                                    RowKey::Record(_) => None,
+                                })
+                                .collect();
+                            ui.close();
+                        }
+                        chrome::menu_separator(ui);
+                        if chrome::menu_item(
+                            ui,
+                            chrome::Item::new("Details").checked(s.show_details),
+                        )
+                        .clicked()
+                        {
+                            s.show_details = !s.show_details;
+                        }
+                    });
                 let body = Rect::from_min_max(Pos2::new(inner.left(), bar.bottom()), inner.max);
                 let mut ui = ui.new_child(egui::UiBuilder::new().max_rect(body));
                 let ui = &mut ui;

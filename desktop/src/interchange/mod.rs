@@ -1933,7 +1933,7 @@ impl App {
                                 for (k, (r, c)) in
                                     w.workspace.iter().zip(w.chosen.iter_mut()).enumerate()
                                 {
-                                    ui.checkbox(c, "");
+                                    crate::dialog_kit::flow_checkbox(ui, c, "", true);
                                     ui.label(if Some(r.id) == w.current {
                                         format!("{}  (open)", r.title)
                                     } else {
@@ -1946,9 +1946,11 @@ impl App {
                                         } else {
                                             format!("All ({count})")
                                         };
-                                        let r = ui.add_enabled(
+                                        let r = crate::dialog_kit::flow_checkbox(
+                                            ui,
+                                            b,
+                                            &text,
                                             xer && count > 0 && *c,
-                                            egui::Checkbox::new(b, text),
                                         );
                                         self.action_rects.insert(
                                             format!("export_baselines_{k}"),
@@ -1970,13 +1972,17 @@ impl App {
                 ExportFormat::Xer => {
                     ui.horizontal(|ui| {
                         ui.label("Version");
-                        egui::ComboBox::from_id_salt("xer_version")
-                            .selected_text(w.version.clone())
-                            .show_ui(ui, |ui| {
-                                for v in XER_VERSIONS {
-                                    ui.selectable_value(&mut w.version, v.to_string(), v);
-                                }
-                            });
+                        let sel = XER_VERSIONS.iter().position(|&v| v == w.version);
+                        if let (_, Some(idx)) = crate::dialog_kit::flow_combo(
+                            ui,
+                            "xer_version",
+                            120.,
+                            &XER_VERSIONS,
+                            sel,
+                            true,
+                        ) {
+                            w.version = XER_VERSIONS[idx].to_string();
+                        }
                     });
                     ui.label("The version label is written to the file header. Choose an older version for an older recipient.");
                 }
@@ -1991,20 +1997,40 @@ impl App {
                             let shown = w
                                 .template
                                 .and_then(|k| w.templates.get(k))
-                                .map_or("Current table layout".to_string(), |t| t.name.clone());
-                            egui::ComboBox::from_id_salt("export_template")
-                                .selected_text(shown)
-                                .width(220.)
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(
-                                        &mut w.template,
-                                        None,
+                                .map_or("Current table layout", |t| t.name.as_str());
+                            crate::dialog_kit::flow_combo_with(
+                                ui,
+                                "export_template",
+                                220.,
+                                shown,
+                                true,
+                                |ui| {
+                                    if crate::dialog_kit::flow_selectable(
+                                        ui,
+                                        w.template.is_none(),
                                         "Current table layout",
-                                    );
-                                    for (k, t) in w.templates.iter().enumerate() {
-                                        ui.selectable_value(&mut w.template, Some(k), &t.name);
+                                        216.,
+                                    )
+                                    .clicked()
+                                    {
+                                        w.template = None;
+                                        ui.close();
                                     }
-                                });
+                                    for (k, t) in w.templates.iter().enumerate() {
+                                        if crate::dialog_kit::flow_selectable(
+                                            ui,
+                                            w.template == Some(k),
+                                            &t.name,
+                                            216.,
+                                        )
+                                        .clicked()
+                                        {
+                                            w.template = Some(k);
+                                            ui.close();
+                                        }
+                                    }
+                                },
+                            );
                             for (key, label, enabled, n) in [
                                 ("export_template_new", "New...", true, 0),
                                 ("export_template_edit", "Edit...", w.template.is_some(), 1),
@@ -2030,30 +2056,49 @@ impl App {
                     } else {
                         ui.horizontal(|ui| {
                             ui.label("Durations, float and lag in");
-                            ui.radio_value(&mut w.unit, DurationUnit::Days, "Days");
-                            ui.radio_value(&mut w.unit, DurationUnit::Hours, "Hours");
+                            crate::dialog_kit::flow_radio(
+                                ui,
+                                &mut w.unit,
+                                DurationUnit::Days,
+                                "Days",
+                                true,
+                            );
+                            crate::dialog_kit::flow_radio(
+                                ui,
+                                &mut w.unit,
+                                DurationUnit::Hours,
+                                "Hours",
+                                true,
+                            );
                         });
                     }
                     if w.format == ExportFormat::Modern && !templated {
+                        const EXPORT_DATE_FORMATS: [&str; 5] = [
+                            "dd-mmm-yy hh:mm",
+                            "dd-mmm-yy",
+                            "yyyy-mm-dd hh:mm",
+                            "mm/dd/yyyy hh:mm",
+                            "mm/dd/yyyy",
+                        ];
                         ui.horizontal(|ui| {
                             ui.label("Date format");
-                            egui::ComboBox::from_id_salt("xlsx_date_format")
-                                .selected_text(w.date_format.clone())
-                                .show_ui(ui, |ui| {
-                                    for f in [
-                                        "dd-mmm-yy hh:mm",
-                                        "dd-mmm-yy",
-                                        "yyyy-mm-dd hh:mm",
-                                        "mm/dd/yyyy hh:mm",
-                                        "mm/dd/yyyy",
-                                    ] {
-                                        ui.selectable_value(&mut w.date_format, f.to_string(), f);
-                                    }
-                                });
+                            let sel = EXPORT_DATE_FORMATS.iter().position(|&f| f == w.date_format);
+                            if let (_, Some(idx)) = crate::dialog_kit::flow_combo(
+                                ui,
+                                "xlsx_date_format",
+                                140.,
+                                &EXPORT_DATE_FORMATS,
+                                sel,
+                                true,
+                            ) {
+                                w.date_format = EXPORT_DATE_FORMATS[idx].to_string();
+                            }
                         });
-                        ui.checkbox(
+                        crate::dialog_kit::flow_checkbox(
+                            ui,
                             &mut w.group_wbs,
                             "Group by WBS (bold band rows with outline levels)",
+                            true,
                         );
                         ui.label("Columns follow the activity table layout. The unit is written in each header and on the About sheet.");
                     }
@@ -2479,14 +2524,29 @@ impl App {
                 }
                 ui.horizontal(|ui| {
                     ui.label("Hours per day for day units");
-                    ui.add(
-                        egui::DragValue::new(&mut m.hours_per_day)
-                            .range(1.0..=24.0)
-                            .speed(0.5),
+                    crate::dialog_kit::flow_number_edit(
+                        ui,
+                        "import_hours_per_day",
+                        &mut m.hours_per_day,
+                        60.,
+                        1.0..=24.0,
+                        true,
                     );
                     ui.label("Relationship lag unit");
-                    ui.radio_value(&mut m.link_unit, DurationUnit::Days, "Days");
-                    ui.radio_value(&mut m.link_unit, DurationUnit::Hours, "Hours");
+                    crate::dialog_kit::flow_radio(
+                        ui,
+                        &mut m.link_unit,
+                        DurationUnit::Days,
+                        "Days",
+                        true,
+                    );
+                    crate::dialog_kit::flow_radio(
+                        ui,
+                        &mut m.link_unit,
+                        DurationUnit::Hours,
+                        "Hours",
+                        true,
+                    );
                 });
                 let choices = xi::target_choices(&lookup);
                 egui::ScrollArea::vertical()
@@ -2519,34 +2579,50 @@ impl App {
                                         }
                                         _ => current,
                                     };
-                                    egui::ComboBox::from_id_salt(("map", i))
-                                        .width(260.)
-                                        .selected_text(current)
-                                        .show_ui(ui, |ui| {
+                                    crate::dialog_kit::flow_combo_with(
+                                        ui,
+                                        ("map", i),
+                                        260.,
+                                        &current,
+                                        true,
+                                        |ui| {
                                             for (t, label) in &choices {
-                                                ui.selectable_value(&mut m.activity[i], *t, label);
+                                                if crate::dialog_kit::flow_selectable(
+                                                    ui,
+                                                    m.activity[i] == *t,
+                                                    label,
+                                                    256.,
+                                                )
+                                                .clicked()
+                                                {
+                                                    m.activity[i] = *t;
+                                                    ui.close();
+                                                }
                                             }
-                                        });
+                                        },
+                                    );
                                     match m.activity[i] {
                                         xi::Target::Column(c)
                                             if c.kind(&lookup)
                                                 == openxer_interchange::columns::Kind::Duration =>
                                         {
-                                            egui::ComboBox::from_id_salt(("unit", i))
-                                                .width(70.)
-                                                .selected_text(m.units[i].label())
-                                                .show_ui(ui, |ui| {
-                                                    ui.selectable_value(
-                                                        &mut m.units[i],
-                                                        DurationUnit::Days,
-                                                        "Days",
-                                                    );
-                                                    ui.selectable_value(
-                                                        &mut m.units[i],
-                                                        DurationUnit::Hours,
-                                                        "Hours",
-                                                    );
-                                                });
+                                            let sel = Some(usize::from(
+                                                m.units[i] == DurationUnit::Hours,
+                                            ));
+                                            if let (_, Some(idx)) = crate::dialog_kit::flow_combo(
+                                                ui,
+                                                ("unit", i),
+                                                70.,
+                                                &["Days", "Hours"],
+                                                sel,
+                                                true,
+                                            ) {
+                                                m.units[i] = if idx == 1 {
+                                                    DurationUnit::Hours
+                                                } else {
+                                                    DurationUnit::Days
+                                                };
+                                            }
                                         }
                                         _ => {
                                             ui.label("");
@@ -2579,33 +2655,44 @@ impl App {
                                             break;
                                         }
                                         ui.label(header);
-                                        egui::ComboBox::from_id_salt(("assign_map", i))
-                                            .width(200.)
-                                            .selected_text(m.assignment[i].label())
-                                            .show_ui(ui, |ui| {
+                                        crate::dialog_kit::flow_combo_with(
+                                            ui,
+                                            ("assign_map", i),
+                                            200.,
+                                            m.assignment[i].label(),
+                                            true,
+                                            |ui| {
                                                 for t in xi::AssignTarget::ALL {
-                                                    ui.selectable_value(
-                                                        &mut m.assignment[i],
-                                                        t,
+                                                    if crate::dialog_kit::flow_selectable(
+                                                        ui,
+                                                        m.assignment[i] == t,
                                                         t.label(),
-                                                    );
-                                                }
-                                            });
-                                        if m.assignment[i].is_units() {
-                                            egui::ComboBox::from_id_salt(("assign_unit", i))
-                                                .width(70.)
-                                                .selected_text(m.assignment_units[i].label())
-                                                .show_ui(ui, |ui| {
-                                                    for u in
-                                                        [DurationUnit::Hours, DurationUnit::Days]
+                                                        196.,
+                                                    )
+                                                    .clicked()
                                                     {
-                                                        ui.selectable_value(
-                                                            &mut m.assignment_units[i],
-                                                            u,
-                                                            u.label(),
-                                                        );
+                                                        m.assignment[i] = t;
+                                                        ui.close();
                                                     }
-                                                });
+                                                }
+                                            },
+                                        );
+                                        if m.assignment[i].is_units() {
+                                            let units = [DurationUnit::Hours, DurationUnit::Days];
+                                            let labels = [units[0].label(), units[1].label()];
+                                            let sel = units
+                                                .iter()
+                                                .position(|u| *u == m.assignment_units[i]);
+                                            if let (_, Some(idx)) = crate::dialog_kit::flow_combo(
+                                                ui,
+                                                ("assign_unit", i),
+                                                70.,
+                                                &labels,
+                                                sel,
+                                                true,
+                                            ) {
+                                                m.assignment_units[i] = units[idx];
+                                            }
                                         } else {
                                             ui.label("");
                                         }
@@ -2635,9 +2722,9 @@ impl App {
                 }
                 ui.horizontal(|ui| {
                     ui.label("Show");
-                    ui.radio_value(&mut w.filter, 0, "All rows");
-                    ui.radio_value(&mut w.filter, 1, "Changes");
-                    ui.radio_value(&mut w.filter, 2, "Errors");
+                    crate::dialog_kit::flow_radio(ui, &mut w.filter, 0, "All rows", true);
+                    crate::dialog_kit::flow_radio(ui, &mut w.filter, 1, "Changes", true);
+                    crate::dialog_kit::flow_radio(ui, &mut w.filter, 2, "Errors", true);
                 });
                 let show = |k: xi::RowKind, filter: usize| match filter {
                     1 => !matches!(k, xi::RowKind::Unchanged | xi::RowKind::Skipped),

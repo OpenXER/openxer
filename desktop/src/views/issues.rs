@@ -234,9 +234,18 @@ impl App {
             Box::new(move |app, c, size, tab| app.issue_details(c, size, tab, selected)),
             &mut |app, ui| {
                 let f = &mut app.views.records.issues.filter;
-                ui.radio_value(f, Filter::All, "All Issues");
-                ui.radio_value(f, Filter::Open, "Open Issues");
-                ui.radio_value(f, Filter::Closed, "Closed Issues");
+                for (choice, label) in [
+                    (Filter::All, "All Issues"),
+                    (Filter::Open, "Open Issues"),
+                    (Filter::Closed, "Closed Issues"),
+                ] {
+                    if chrome::menu_item(ui, chrome::Item::new(label).checked(*f == choice))
+                        .clicked()
+                    {
+                        *f = choice;
+                        ui.close();
+                    }
+                }
             },
         );
         match command {

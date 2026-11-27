@@ -19,12 +19,12 @@ static SERIAL: AtomicU64 = AtomicU64::new(1);
 /// Detail-table edits bump `revision`; comparing the counter avoids diffing tables every frame.
 #[derive(Clone)]
 struct Snapshot {
-    model: Model,
-    details: BTreeMap<i64, ActivityDetails>,
-    wbs: Vec<Wbs>,
+    model: Arc<Model>,
+    details: Arc<BTreeMap<i64, ActivityDetails>>,
+    wbs: Arc<Vec<Wbs>>,
     revision: u64,
     records: RecordSnapshot,
-    calendar_names: Vec<String>,
+    calendar_names: Arc<Vec<String>>,
     /// Whole-project copy for bulk changes (a spreadsheet import) that also touch
     /// tables outside the detail records, such as deleted activity rows.
     full: Option<Arc<FullProject>>,
@@ -40,31 +40,59 @@ impl Snapshot {
             Some(p) if p.revision == revision => p.records.clone(),
             _ => RecordSnapshot::capture_shared(&project.document, previous.map(|p| &p.records)),
         };
+        let model = match previous {
+            Some(p) if *p.model == project.model => p.model.clone(),
+            _ => Arc::new(project.model.clone()),
+        };
+        let details = match previous {
+            Some(p) if *p.details == project.details => p.details.clone(),
+            _ => Arc::new(project.details.clone()),
+        };
+        let wbs = match previous {
+            Some(p) if *p.wbs == project.wbs => p.wbs.clone(),
+            _ => Arc::new(project.wbs.clone()),
+        };
+        let calendar_names = match previous {
+            Some(p) if *p.calendar_names == project.calendar_names => p.calendar_names.clone(),
+            _ => Arc::new(project.calendar_names.clone()),
+        };
         Self {
-            model: project.model.clone(),
-            details: project.details.clone(),
-            wbs: project.wbs.clone(),
+            model,
+            details,
+            wbs,
             revision,
             records,
-            calendar_names: project.calendar_names.clone(),
+            calendar_names,
             full: None,
             external: None,
             serial: SERIAL.fetch_add(1, Ordering::Relaxed),
         }
     }
     fn matches(&self, project: &ProjectData, revision: u64) -> bool {
-        self.revision == revision && self.model == project.model && self.details == project.details
+        self.revision == revision
+            && *self.model == project.model
+            && *self.details == project.details
     }
     fn apply(&self, project: &mut ProjectData) {
         if let Some(full) = &self.full {
             *project = full.restore();
             return;
         }
-        project.model = self.model.clone();
-        project.details = self.details.clone();
-        project.wbs = self.wbs.clone();
+        project.model = (*self.model).clone();
+        project.details = (*self.details).clone();
+        project.wbs = (*self.wbs).clone();
         self.records.restore(&mut project.document);
-        project.calendar_names = self.calendar_names.clone();
+        project.calendar_names = (*self.calendar_names).clone();
+    }
+}
+
+fn undo_limit(activities: usize) -> usize {
+    if activities > 20_000 {
+        16
+    } else if activities > 5_000 {
+        32
+    } else {
+        64
     }
 }
 
@@ -170,8 +198,8 @@ impl History {
         STATE_COMPARES.with(|n| n.set(n.get() + 1));
         let c = &self.current;
         (c.matches(project, revision)
-            && c.wbs == project.wbs
-            && c.calendar_names == project.calendar_names)
+            && *c.wbs == project.wbs
+            && *c.calendar_names == project.calendar_names)
             .then_some(c.serial)
     }
     pub fn counts(&self) -> (usize, usize) {
@@ -180,6 +208,10 @@ impl History {
     /// Revision of the detail tables in the current snapshot (restored by undo/redo).
     pub fn revision(&self) -> u64 {
         self.current.revision
+    }
+    /// Serial of the current snapshot.
+    pub fn current_serial(&self) -> u64 {
+        self.current.serial
     }
     /// Whether `project` is the state last recorded (nothing changed since).
     pub fn is_current(&self, project: &ProjectData, revision: u64) -> bool {
@@ -195,7 +227,8 @@ impl History {
         }
         if !(merge.is_some() && merge == self.merge && time - self.last_change < 0.8) {
             self.undo.push(self.step_start());
-            if self.undo.len() > 64 {
+            let limit = undo_limit(project.model.activities.len());
+            while self.undo.len() > limit {
                 self.undo.remove(0);
             }
             self.steps += 1;
@@ -229,7 +262,8 @@ impl History {
         self.current.full = Some(first.clone());
         let start = self.step_start();
         self.undo.push(start);
-        if self.undo.len() > 64 {
+        let limit = undo_limit(after.model.activities.len());
+        while self.undo.len() > limit {
             self.undo.remove(0);
         }
         self.steps += 1;
@@ -268,7 +302,8 @@ impl History {
         let mut start = self.step_start();
         start.external = Some(id);
         self.undo.push(start);
-        if self.undo.len() > 64 {
+        let limit = undo_limit(project.model.activities.len());
+        while self.undo.len() > limit {
             self.undo.remove(0);
         }
         self.steps += 1;

@@ -532,10 +532,12 @@ impl App {
     /// The active view of a tab group, inside its frame.
     fn view_content(&mut self, ui: &mut egui::Ui) {
         if self.views.main.is_activities() {
+            self.pin_serial();
             if self.show_details {
                 self.bottom_pane(ui);
             }
             self.top_pane(ui);
+            self.unpin_serial();
         } else {
             self.other_view(ui);
         }

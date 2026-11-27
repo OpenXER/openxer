@@ -217,7 +217,7 @@ pub struct BottomGrid {
     pub drawing: bool,
     /// Row tops of the bottom table in the last frame and the screen y of
     /// its first row, for tests and renders.
-    pub row_offsets: Vec<f32>,
+    pub row_offsets: std::rc::Rc<Vec<f32>>,
     pub body_top: f32,
     /// The bottom table's header top and height in the last frame.
     pub header: (f32, f32),

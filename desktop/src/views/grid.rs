@@ -1406,7 +1406,12 @@ fn cell_editor(
                                 );
                             }
                             let label = if item.is_empty() { " " } else { item.as_str() };
-                            ui.selectable_label(item.eq_ignore_ascii_case(&ed.text), label)
+                            crate::dialog_kit::flow_selectable(
+                                ui,
+                                item.eq_ignore_ascii_case(&ed.text),
+                                label,
+                                80.,
+                            )
                         })
                         .inner;
                     rects.push((format!("{table}_choice_{n}"), r.rect));

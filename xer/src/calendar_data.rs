@@ -304,6 +304,9 @@ impl ProjectData {
         }
         for (a, cal) in self.model.activities.iter_mut().zip(activity_cals) {
             a.cal = cal;
+            for asg in &mut a.assignments {
+                asg.cal = asg.cal.and_then(|c| remap(c).ok());
+            }
         }
         // The first calendar of a project that had none is its calendar in
         // the file too, as when an activity is added first.
@@ -474,5 +477,38 @@ mod tests {
         assert_eq!(p.model, before);
         let doc = Document::parse(&p.updated_document().text()).unwrap();
         assert_eq!(doc.table("CALENDAR").unwrap().rows.len(), 1);
+    }
+
+    #[test]
+    fn rebuild_remaps_resource_dependent_assignment_calendars() {
+        let mut p = starter();
+        let base = p.document.table("CALENDAR").unwrap().rows[0].clone();
+        let cals = p.document.table_mut("CALENDAR");
+        let id_col = cals.field("clndr_id").unwrap();
+        let name_col = cals.field("clndr_name").unwrap();
+        let mut cal_a = base.clone();
+        cal_a[id_col] = "70".into();
+        cal_a[name_col] = "Unused".into();
+        let mut cal_b = base.clone();
+        cal_b[id_col] = "71".into();
+        cal_b[name_col] = "Crew".into();
+        cals.rows.insert(0, cal_b);
+        cals.rows.insert(0, cal_a);
+        p.rebuild_calendars().unwrap();
+        // Now calendars are [70 (Unused), 71 (Crew), default].
+        p.model.activities[0].task_type = openxer_engine::model::TaskType::Resource;
+        p.model.activities[0]
+            .assignments
+            .push(openxer_engine::model::Assignment {
+                rsrc_id: 9,
+                cal: Some(1),
+                rem: 480,
+                ..Default::default()
+            });
+        // Remove Unused (index 0): Crew shifts from index 1 to index 0.
+        p.document.table_mut("CALENDAR").rows.remove(0);
+        p.rebuild_calendars().unwrap();
+        assert_eq!(p.model.calendars[0].id, "71");
+        assert_eq!(p.model.activities[0].assignments[0].cal, Some(0));
     }
 }

@@ -1160,8 +1160,8 @@ pub fn parse_date(origin: i64, text: &str, keep: Option<i64>) -> Result<Option<i
 pub fn parse_day(text: &str) -> Result<Option<NaiveDate>, String> {
     Ok(parse_date(0, text, None)?.map(|m| (epoch() + Duration::minutes(m)).date()))
 }
-/// A drag box over a duration held in minutes, shown and typed in the
-/// user's format.
+/// A sunken edit box over a duration held in minutes, shown and typed in the
+/// user's format. Commits on Enter or focus loss.
 pub fn duration_editor(
     ui: &mut egui::Ui,
     enabled: bool,
@@ -1170,22 +1170,30 @@ pub fn duration_editor(
     range: std::ops::RangeInclusive<i64>,
 ) -> egui::Response {
     let formats = current();
-    let step = periods.minutes(formats.durations.unit) as f64
-        / 10f64.powi(formats.durations.decimals as i32);
-    let mut value = *minutes as f64;
     let shown = formats.clone();
-    let response = ui.add_enabled(
+    let width = ui.available_width().clamp(24., 96.);
+    let min_m = *range.start();
+    let max_m = *range.end();
+    let (mut response, committed) = crate::dialog_kit::flow_parsed_edit(
+        ui,
+        ui.next_auto_id(),
+        *minutes as f64,
+        width,
+        move |v| shown.duration(v.round() as i64, periods),
+        move |text| {
+            formats
+                .parse_duration(text, periods)
+                .ok()
+                .map(|m| m.clamp(min_m, max_m) as f64)
+        },
         enabled,
-        egui::DragValue::new(&mut value)
-            .range(*range.start() as f64..=*range.end() as f64)
-            .speed(step / 4.)
-            .custom_formatter(move |v, _| shown.duration(v.round() as i64, periods))
-            .custom_parser(move |text| {
-                formats.parse_duration(text, periods).ok().map(|m| m as f64)
-            }),
     );
-    if response.changed() {
-        *minutes = (value.round() as i64).clamp(*range.start(), *range.end());
+    if let Some(v) = committed {
+        let clamped = (v.round() as i64).clamp(min_m, max_m);
+        if clamped != *minutes {
+            *minutes = clamped;
+            response.mark_changed();
+        }
     }
     response
 }

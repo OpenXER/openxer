@@ -22,6 +22,7 @@ use std::rc::Rc;
 #[derive(Clone, PartialEq)]
 pub(crate) struct HeightKey {
     serial: u64,
+    multi_key: Option<(u64, u64, u64)>,
     columns: Vec<layout::ColumnSetting>,
     font: TableFont,
     lines: u8,
@@ -479,6 +480,7 @@ impl App {
     }
 
     /// The height of activity row `i`: taller when its text wraps.
+    #[cfg(test)]
     pub(crate) fn activity_height(&self, i: usize) -> f32 {
         let base = self.activity_row_height();
         match self.layout_opts.heights.borrow().as_ref() {
@@ -497,13 +499,29 @@ impl App {
             return;
         };
         let serial = self.shown_serial();
-        let key = serial.map(|serial| HeightKey {
-            serial,
-            columns: self.grid.layout.columns.clone(),
-            font: table.font.clone(),
-            lines,
-            formats: self.formats.clone(),
-        });
+        let key = serial
+            .map(|serial| HeightKey {
+                serial,
+                multi_key: None,
+                columns: self.grid.layout.columns.clone(),
+                font: table.font.clone(),
+                lines,
+                formats: self.formats.clone(),
+            })
+            .or_else(|| {
+                self.open_set.multi().then(|| HeightKey {
+                    serial: 0,
+                    multi_key: Some((
+                        self.open_set.version,
+                        self.history.changes(),
+                        self.records_revision,
+                    )),
+                    columns: self.grid.layout.columns.clone(),
+                    font: table.font.clone(),
+                    lines,
+                    formats: self.formats.clone(),
+                })
+            });
         if let (Some(key), Some((stored, _))) = (&key, self.layout_opts.heights.borrow().as_ref()) {
             if key == stored {
                 return;
@@ -516,31 +534,61 @@ impl App {
         let font = table.font.clone();
         let mut heights = HashMap::new();
         let base = self.activity_row_height();
-        ctx.fonts_mut(|f| {
-            for i in 0..shown.model.activities.len() {
-                let mut tallest: f32 = 0.;
-                for c in cols.iter().filter(|c| c.kind == grid::columns::Kind::Text) {
-                    let text = grid::columns::display(
-                        shown,
-                        Some(i),
-                        &grid::columns::shown_value(shown, &ix, c, i),
-                    );
-                    if text.is_empty() {
-                        continue;
+        let text_cols: Vec<_> = cols
+            .iter()
+            .filter(|c| c.kind == grid::columns::Kind::Text)
+            .cloned()
+            .collect();
+        if !text_cols.is_empty() {
+            ctx.fonts_mut(|f| {
+                let single_line_h = f
+                    .layout_job(table_job("Ag".into(), &font, INK, None))
+                    .size()
+                    .y;
+                let font_size = if font.is_default() {
+                    FONT_SIZE
+                } else {
+                    font.points
+                };
+                let wide_char = f
+                    .layout_job(table_job("W".into(), &font, INK, None))
+                    .size()
+                    .x
+                    .max(font_size * 0.85);
+                for i in 0..shown.model.activities.len() {
+                    let mut tallest: f32 = 0.;
+                    for c in &text_cols {
+                        let text = grid::columns::display(
+                            shown,
+                            Some(i),
+                            &grid::columns::shown_value(shown, &ix, c, i),
+                        );
+                        if text.is_empty() {
+                            continue;
+                        }
+                        let max_w = c.width - 7.;
+                        if text.is_ascii()
+                            && !text.as_bytes().contains(&b'\n')
+                            && (text.len() as f32) * wide_char <= max_w
+                        {
+                            tallest = tallest.max(single_line_h);
+                            continue;
+                        }
+                        let job = table_job(text, &font, INK, Some((max_w, lines)));
+                        tallest = tallest.max(f.layout_job(job).size().y);
                     }
-                    let job = table_job(text, &font, INK, Some((c.width - 7., lines)));
-                    tallest = tallest.max(f.layout_job(job).size().y);
+                    // Text from 3 px below the row top, 3 px under it and the line.
+                    let needed = (tallest + 7.).ceil();
+                    if needed > base {
+                        heights.insert(i, needed);
+                    }
                 }
-                // Text from 3 px below the row top, 3 px under it and the line.
-                let needed = (tallest + 7.).ceil();
-                if needed > base {
-                    heights.insert(i, needed);
-                }
-            }
-        });
+            });
+        }
         *self.layout_opts.heights.borrow_mut() = Some((
             key.unwrap_or(HeightKey {
                 serial: u64::MAX,
+                multi_key: None,
                 columns: vec![],
                 font,
                 lines,

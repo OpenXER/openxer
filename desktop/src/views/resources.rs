@@ -2548,7 +2548,8 @@ impl App {
                             ui.label("Nothing to choose.");
                         }
                         for (i, (key, label)) in options.iter().enumerate() {
-                            let response = ui.selectable_label(false, label);
+                            let response =
+                                crate::dialog_kit::flow_selectable(ui, false, label, 290.);
                             self.action(&format!("resource_pick_item_{i}"), &response);
                             if response.clicked() {
                                 chosen = Some(key.clone());

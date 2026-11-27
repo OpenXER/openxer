@@ -1722,12 +1722,13 @@ impl App {
         if lines_per_row > 1 {
             let least = lines_per_row as f32 * ROW_H;
             let mut top = 0.;
+            let offsets = std::rc::Rc::make_mut(&mut metrics.offsets);
             for (k, h) in metrics.heights.iter_mut().enumerate() {
                 *h = h.max(least);
-                metrics.offsets[k] = top;
+                offsets[k] = top;
                 top += *h;
             }
-            if let Some(last) = metrics.offsets.last_mut() {
+            if let Some(last) = offsets.last_mut() {
                 *last = top;
             }
         }
@@ -1983,19 +1984,32 @@ impl App {
             return;
         }
         controls.horizontal(|ui| {
-            let r = ui.radio_value(&mut self.panes.usage.selected_only, false, "All activities");
+            let r = crate::dialog_kit::flow_radio(
+                ui,
+                &mut self.panes.usage.selected_only,
+                false,
+                "All activities",
+                true,
+            );
             self.action("usage_all_activities", &r);
-            let r = ui.radio_value(
+            let r = crate::dialog_kit::flow_radio(
+                ui,
                 &mut self.panes.usage.selected_only,
                 true,
                 "Selected activities",
+                true,
             );
             self.action("usage_selected_activities", &r);
         });
         controls.separator();
         controls
             .label(RichText::new("Display Activities for selected...").font(chrome::table_font()));
-        let r = controls.checkbox(&mut self.panes.usage.time_period, "Time Period");
+        let r = crate::dialog_kit::flow_checkbox(
+            controls,
+            &mut self.panes.usage.time_period,
+            "Time Period",
+            true,
+        );
         self.action("usage_time_period", &r);
     }
 

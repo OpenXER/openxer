@@ -209,6 +209,8 @@ impl Builder<'_> {
         let interval = super::interval::parse(self.p, column.kind, &level.interval);
         // (order key, code, name) per band, members in sorted order.
         let mut bands: Vec<(Value, i64, String, String, Vec<usize>, BandTarget)> = vec![];
+        let mut by_code: std::collections::HashMap<String, Vec<usize>> =
+            std::collections::HashMap::new();
         for i in members {
             let task_id = self.p.model.activities[i].task_id;
             let (value, seq, code, name, target) = match column.source {
@@ -233,22 +235,44 @@ impl Builder<'_> {
                     (grouped, 0, text.clone(), text, BandTarget::Other)
                 }
             };
-            match bands.iter_mut().find(|b| b.2 == code && b.0 == value) {
-                Some(b) => b.4.push(i),
-                None => bands.push((value, seq, code, name, vec![i], target)),
+            let existing = by_code
+                .get(&code)
+                .and_then(|indices| indices.iter().copied().find(|&idx| bands[idx].0 == value));
+            match existing {
+                Some(idx) => bands[idx].4.push(i),
+                None => {
+                    let idx = bands.len();
+                    by_code.entry(code.clone()).or_default().push(idx);
+                    bands.push((value, seq, code, name, vec![i], target));
+                }
             }
         }
         let alpha = self.gs.sort_bands_alphabetically;
-        bands.sort_by(|a, b| {
-            let blank = |v: &Value| matches!(v, Value::Empty);
-            blank(&a.0).cmp(&blank(&b.0)).then_with(|| {
-                if alpha {
-                    a.3.to_lowercase().cmp(&b.3.to_lowercase())
-                } else {
-                    a.1.cmp(&b.1).then_with(|| columns::compare(&a.0, &b.0))
-                }
-            })
-        });
+        if alpha {
+            let mut order: Vec<(usize, String)> = bands
+                .iter()
+                .enumerate()
+                .map(|(idx, b)| (idx, b.3.to_lowercase()))
+                .collect();
+            order.sort_by(|&(ia, ref ka), &(ib, ref kb)| {
+                let blank = |v: &Value| matches!(v, Value::Empty);
+                blank(&bands[ia].0)
+                    .cmp(&blank(&bands[ib].0))
+                    .then_with(|| ka.cmp(kb))
+            });
+            let mut slots: Vec<_> = bands.into_iter().map(Some).collect();
+            bands = order
+                .into_iter()
+                .map(|(idx, _)| slots[idx].take().unwrap())
+                .collect();
+        } else {
+            bands.sort_by(|a, b| {
+                let blank = |v: &Value| matches!(v, Value::Empty);
+                blank(&a.0)
+                    .cmp(&blank(&b.0))
+                    .then_with(|| a.1.cmp(&b.1).then_with(|| columns::compare(&a.0, &b.0)))
+            });
+        }
         for (value, _, code, name, list, target) in bands {
             let key = format!("{prefix}{}={}|", column.id, code);
             let (code, name) = if matches!(value, Value::Empty) {

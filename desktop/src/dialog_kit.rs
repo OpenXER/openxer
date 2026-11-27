@@ -1529,49 +1529,18 @@ fn drop_down(
         }
     }
     c.sunken(rect, if enabled { Color32::WHITE } else { READONLY });
-    let button = Rect::from_min_size(
-        Pos2::new(rect.right() - 2. - 16., rect.top() + 2.),
-        Vec2::new(16., h - 4.),
-    );
-    let p = c.ui.painter();
-    p.rect_filled(button, 0., FACE);
-    p.rect_filled(
-        Rect::from_min_size(button.min, Vec2::new(button.width(), 1.)),
-        0.,
-        Color32::WHITE,
-    );
-    p.rect_filled(
-        Rect::from_min_size(
-            Pos2::new(button.left(), button.bottom() - 1.),
-            Vec2::new(button.width(), 1.),
-        ),
-        0.,
-        DARK,
-    );
-    p.rect_filled(
-        Rect::from_min_size(
-            Pos2::new(button.right() - 1., button.top()),
-            Vec2::new(1., button.height()),
-        ),
-        0.,
-        DARK,
-    );
-    let m = button.center();
-    p.add(egui::Shape::convex_polygon(
-        vec![
-            Pos2::new(m.x - 3.5, m.y - 1.5),
-            Pos2::new(m.x + 3.5, m.y - 1.5),
-            Pos2::new(m.x, m.y + 2.),
-        ],
-        if enabled { INK } else { DISABLED },
-        Stroke::NONE,
-    ));
+    let button = paint_combo_button(c.ui.painter(), rect, enabled);
     if *selected < list.count {
         let inner = Rect::from_min_max(
             rect.min + Vec2::new(3., 2.),
             Pos2::new(button.left(), rect.bottom() - 2.),
         );
-        (list.field)(&p.with_clip_rect(inner), inner, *selected, enabled);
+        (list.field)(
+            &c.ui.painter().with_clip_rect(inner),
+            inner,
+            *selected,
+            enabled,
+        );
     }
     let ctx = c.ui.ctx().clone();
     let mut open = ctx.data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
@@ -3262,6 +3231,477 @@ pub(crate) fn mark_default(c: &Canvas, key: &str) {
         crate::dialog_keys::mark_default(c.ui, &response);
     }
 }
+
+/// Paints the 16 px combo drop button at the right edge of `rect` and returns
+/// its rectangle.
+fn paint_combo_button(p: &egui::Painter, rect: Rect, enabled: bool) -> Rect {
+    let button = Rect::from_min_size(
+        Pos2::new(rect.right() - 2. - 16., rect.top() + 2.),
+        Vec2::new(16., (rect.height() - 4.).max(1.)),
+    );
+    p.rect_filled(button, 0., FACE);
+    p.rect_filled(
+        Rect::from_min_size(button.min, Vec2::new(button.width(), 1.)),
+        0.,
+        Color32::WHITE,
+    );
+    p.rect_filled(
+        Rect::from_min_size(
+            Pos2::new(button.left(), button.bottom() - 1.),
+            Vec2::new(button.width(), 1.),
+        ),
+        0.,
+        DARK,
+    );
+    p.rect_filled(
+        Rect::from_min_size(
+            Pos2::new(button.right() - 1., button.top()),
+            Vec2::new(1., button.height()),
+        ),
+        0.,
+        DARK,
+    );
+    let m = button.center();
+    p.add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(m.x - 3.5, m.y - 1.5),
+            Pos2::new(m.x + 3.5, m.y - 1.5),
+            Pos2::new(m.x, m.y + 2.),
+        ],
+        if enabled { INK } else { DISABLED },
+        Stroke::NONE,
+    ));
+    button
+}
+
+/// Shared kit check box for flow layouts, painting the 13 x 13 sunken glyph.
+pub(crate) fn flow_checkbox(
+    ui: &mut egui::Ui,
+    value: &mut bool,
+    label: &str,
+    enabled: bool,
+) -> egui::Response {
+    let font = body_font();
+    let ink = if enabled { INK } else { DISABLED };
+    let text_w = if label.is_empty() {
+        0.
+    } else {
+        ui.painter()
+            .layout_no_wrap(label.to_string(), font.clone(), ink)
+            .size()
+            .x
+            + 5.
+    };
+    let size = Vec2::new(13. + text_w, 18.);
+    let (rect, mut response) = ui.allocate_exact_size(
+        size,
+        if enabled {
+            Sense::click()
+        } else {
+            Sense::hover()
+        },
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Checkbox, enabled, *value, label)
+    });
+    if enabled && response.clicked() {
+        *value = !*value;
+        response.mark_changed();
+    }
+    if ui.is_rect_visible(rect) {
+        let box_pos = Pos2::new(rect.left(), (rect.center().y - 6.5).round());
+        paint_check_glyph(ui.painter(), box_pos, *value, enabled);
+        if !label.is_empty() {
+            ui.painter().text(
+                Pos2::new(rect.left() + 18., rect.center().y),
+                Align2::LEFT_CENTER,
+                label,
+                font,
+                ink,
+            );
+        }
+    }
+    response
+}
+
+/// Shared kit radio button for flow layouts, painting the 12 x 12 sunken glyph.
+pub(crate) fn flow_radio<T: PartialEq>(
+    ui: &mut egui::Ui,
+    value: &mut T,
+    choice: T,
+    label: &str,
+    enabled: bool,
+) -> egui::Response {
+    let selected = *value == choice;
+    let font = body_font();
+    let ink = if enabled { INK } else { DISABLED };
+    let text_w = if label.is_empty() {
+        0.
+    } else {
+        ui.painter()
+            .layout_no_wrap(label.to_string(), font.clone(), ink)
+            .size()
+            .x
+            + 5.
+    };
+    let size = Vec2::new(12. + text_w, 18.);
+    let (rect, mut response) = ui.allocate_exact_size(
+        size,
+        if enabled {
+            Sense::click()
+        } else {
+            Sense::hover()
+        },
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::RadioButton, enabled, selected, label)
+    });
+    if enabled && response.clicked() && *value != choice {
+        *value = choice;
+        response.mark_changed();
+    }
+    if ui.is_rect_visible(rect) {
+        let dot_pos = Pos2::new(rect.left(), (rect.center().y - 6.).round());
+        paint_radio_glyph(ui.painter(), dot_pos, selected, enabled);
+        if !label.is_empty() {
+            ui.painter().text(
+                Pos2::new(rect.left() + 17., rect.center().y),
+                Align2::LEFT_CENTER,
+                label,
+                font,
+                ink,
+            );
+        }
+    }
+    response
+}
+
+/// Flat list/menu selectable row in `body_font`, crisp 0 px corners.
+pub(crate) fn flow_selectable(
+    ui: &mut egui::Ui,
+    selected: bool,
+    label: &str,
+    min_width: f32,
+) -> egui::Response {
+    let shown = if label.is_empty() { " " } else { label };
+    let font = body_font();
+    let galley = ui.painter().layout_no_wrap(shown.to_string(), font, INK);
+    let width = min_width.max(galley.size().x + 12.);
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 18.), Sense::click());
+    if ui.is_rect_visible(rect) {
+        let fill = if selected {
+            SELECT
+        } else if response.hovered() {
+            chrome::pal::HOT_FILL
+        } else {
+            Color32::TRANSPARENT
+        };
+        if fill != Color32::TRANSPARENT {
+            ui.painter().rect_filled(rect, 0., fill);
+        }
+        let ink = if selected { Color32::WHITE } else { INK };
+        ui.painter().galley(
+            Pos2::new(
+                rect.left() + 5.,
+                (rect.center().y - galley.size().y / 2.).round(),
+            ),
+            galley,
+            ink,
+        );
+    }
+    response
+}
+
+/// Sunken kit drop-down combo for flow layouts with custom popup rows.
+pub(crate) fn flow_combo_with(
+    ui: &mut egui::Ui,
+    id_salt: impl std::hash::Hash,
+    width: f32,
+    selected_text: &str,
+    enabled: bool,
+    mut body: impl FnMut(&mut egui::Ui),
+) -> egui::Response {
+    let w = width.max(32.);
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::new(w, 20.),
+        if enabled {
+            Sense::click()
+        } else {
+            Sense::hover()
+        },
+    );
+    if ui.is_rect_visible(rect) {
+        let p = ui.painter();
+        paint_sunken(p, rect, if enabled { Color32::WHITE } else { READONLY });
+        let button = paint_combo_button(p, rect, enabled);
+        if !selected_text.is_empty() {
+            let inner = Rect::from_min_max(
+                rect.min + Vec2::new(4., 2.),
+                Pos2::new(button.left() - 1., rect.bottom() - 2.),
+            );
+            let galley = p.layout_no_wrap(
+                selected_text.to_string(),
+                body_font(),
+                if enabled { INK } else { DISABLED },
+            );
+            p.with_clip_rect(inner.intersect(p.clip_rect())).galley(
+                Pos2::new(
+                    inner.left(),
+                    (inner.center().y - galley.size().y / 2.).round(),
+                ),
+                galley,
+                INK,
+            );
+        }
+    }
+    if enabled {
+        let _ = id_salt;
+        egui::Popup::from_toggle_button_response(&response)
+            .width(w)
+            .style(chrome::popup_menu_style)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+            .show(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::ZERO;
+                egui::ScrollArea::vertical()
+                    .max_height(260.)
+                    .show(ui, |ui| body(ui));
+            });
+    }
+    response
+}
+
+/// Sunken kit drop-down combo over fixed labels for flow layouts.
+pub(crate) fn flow_combo(
+    ui: &mut egui::Ui,
+    id_salt: impl std::hash::Hash,
+    width: f32,
+    items: &[&str],
+    selected: Option<usize>,
+    enabled: bool,
+) -> (egui::Response, Option<usize>) {
+    let current = selected.and_then(|i| items.get(i)).copied().unwrap_or("");
+    let mut picked = None;
+    let resp = flow_combo_with(ui, id_salt, width, current, enabled, |ui| {
+        for (i, label) in items.iter().enumerate() {
+            if flow_selectable(ui, selected == Some(i), label, width - 4.).clicked()
+                && selected != Some(i)
+            {
+                picked = Some(i);
+                ui.close();
+            }
+        }
+    });
+    (resp, picked)
+}
+
+/// Sunken single-line text field for flow layouts.
+pub(crate) fn flow_edit(
+    ui: &mut egui::Ui,
+    id_salt: impl std::hash::Hash,
+    text: &mut String,
+    width: f32,
+    enabled: bool,
+) -> egui::Response {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width.max(24.), 20.), Sense::hover());
+    paint_sunken(
+        ui.painter(),
+        rect,
+        if enabled { Color32::WHITE } else { READONLY },
+    );
+    let inner = rect.shrink2(Vec2::new(4., 2.));
+    ui.put(
+        inner,
+        egui::TextEdit::singleline(text)
+            .id(ui.make_persistent_id(id_salt))
+            .frame(false)
+            .margin(egui::Margin::ZERO)
+            .font(body_font())
+            .text_color(if enabled { INK } else { DISABLED })
+            .interactive(enabled)
+            .desired_width(inner.width()),
+    )
+}
+
+/// Right-aligned sunken number editor for flow layouts.
+pub(crate) fn flow_number_edit(
+    ui: &mut egui::Ui,
+    id_salt: impl std::hash::Hash,
+    value: &mut f64,
+    width: f32,
+    range: std::ops::RangeInclusive<f64>,
+    enabled: bool,
+) -> egui::Response {
+    let id = ui.make_persistent_id(id_salt);
+    let buf_id = id.with("num_buf");
+    let focused = ui.ctx().memory(|m| m.has_focus(id));
+    let mut buf = if focused {
+        ui.ctx()
+            .data(|d| d.get_temp::<String>(buf_id))
+            .unwrap_or_else(|| format_flow_number(*value))
+    } else {
+        format_flow_number(*value)
+    };
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width.max(24.), 20.), Sense::hover());
+    paint_sunken(
+        ui.painter(),
+        rect,
+        if enabled { Color32::WHITE } else { READONLY },
+    );
+    let inner = rect.shrink2(Vec2::new(4., 2.));
+    let mut resp = ui.put(
+        inner,
+        egui::TextEdit::singleline(&mut buf)
+            .id(id)
+            .frame(false)
+            .margin(egui::Margin::ZERO)
+            .horizontal_align(egui::Align::Max)
+            .font(body_font())
+            .text_color(if enabled { INK } else { DISABLED })
+            .interactive(enabled)
+            .desired_width(inner.width()),
+    );
+    if enabled && (resp.changed() || resp.lost_focus()) {
+        if let Ok(parsed) = buf.trim().parse::<f64>() {
+            let clamped = parsed.clamp(*range.start(), *range.end());
+            if (*value - clamped).abs() > 1e-9 {
+                *value = clamped;
+                resp.mark_changed();
+            }
+        }
+    }
+    if resp.has_focus() {
+        ui.ctx().data_mut(|d| d.insert_temp(buf_id, buf));
+    } else {
+        ui.ctx().data_mut(|d| d.remove::<String>(buf_id));
+    }
+    resp
+}
+
+/// Right-aligned sunken parsed value editor using caller-supplied formatter
+/// and parser. Commits on Enter or focus loss (excluding Escape).
+pub(crate) fn flow_parsed_edit(
+    ui: &mut egui::Ui,
+    id_salt: impl std::hash::Hash,
+    value: f64,
+    width: f32,
+    show: impl Fn(f64) -> String,
+    parse: impl Fn(&str) -> Option<f64>,
+    enabled: bool,
+) -> (egui::Response, Option<f64>) {
+    let id = ui.make_persistent_id(id_salt);
+    let buf_id = id.with("parsed_buf");
+    let focused = ui.ctx().memory(|m| m.has_focus(id));
+    let mut buf = if focused {
+        ui.ctx()
+            .data(|d| d.get_temp::<String>(buf_id))
+            .unwrap_or_else(|| show(value))
+    } else {
+        show(value)
+    };
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width.max(24.), 18.), Sense::hover());
+    paint_sunken(
+        ui.painter(),
+        rect,
+        if enabled { Color32::WHITE } else { READONLY },
+    );
+    let inner = rect.shrink2(Vec2::new(4., 1.));
+    let mut resp = ui.put(
+        inner,
+        egui::TextEdit::singleline(&mut buf)
+            .id(id)
+            .frame(false)
+            .margin(egui::Margin::ZERO)
+            .horizontal_align(egui::Align::Max)
+            .font(body_font())
+            .text_color(if enabled { INK } else { DISABLED })
+            .interactive(enabled)
+            .desired_width(inner.width()),
+    );
+    crate::dialog_keys::note_keeps_enter(&resp);
+    let enter = resp.has_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+    let escape = ui.input(|i| i.key_pressed(Key::Escape));
+    let submit = enabled && ((resp.lost_focus() && !escape) || enter);
+    let mut committed = None;
+    if submit {
+        if let Some(parsed) = parse(&buf) {
+            if (parsed - value).abs() > 1e-9 {
+                committed = Some(parsed);
+                resp.mark_changed();
+            }
+        }
+        ui.ctx().data_mut(|d| d.remove::<String>(buf_id));
+        if enter {
+            resp.surrender_focus();
+        }
+    } else if resp.has_focus() && !escape {
+        ui.ctx().data_mut(|d| d.insert_temp(buf_id, buf));
+    } else {
+        ui.ctx().data_mut(|d| d.remove::<String>(buf_id));
+    }
+    (resp, committed)
+}
+
+/// Right-aligned sunken number editor using caller-supplied formatter and parser.
+pub(crate) fn flow_parsed_number(
+    ui: &mut egui::Ui,
+    id_salt: impl std::hash::Hash,
+    value: f64,
+    width: f32,
+    show: impl Fn(f64) -> String,
+    parse: impl Fn(&str) -> Option<f64>,
+    enabled: bool,
+) -> Option<f64> {
+    flow_parsed_edit(ui, id_salt, value, width, show, parse, enabled).1
+}
+
+fn format_flow_number(v: f64) -> String {
+    let rounded = (v * 100.).round() / 100.;
+    if rounded.fract() == 0. {
+        format!("{rounded:.0}")
+    } else {
+        let s = format!("{rounded:.2}");
+        s.trim_end_matches('0').trim_end_matches('.').to_string()
+    }
+}
+
+/// Flat toolbar text button matching `paint_push_button`.
+pub(crate) fn toolbar_button(
+    ui: &mut egui::Ui,
+    label: &str,
+    enabled: bool,
+    selected: bool,
+) -> egui::Response {
+    let text_w = ui
+        .painter()
+        .layout_no_wrap(label.to_string(), button_font(), INK)
+        .size()
+        .x;
+    let size = Vec2::new((text_w + 14.).ceil().max(32.), 22.);
+    let (rect, response) = ui.allocate_exact_size(
+        size,
+        if enabled {
+            Sense::click()
+        } else {
+            Sense::hover()
+        },
+    );
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, label));
+    if ui.is_rect_visible(rect) {
+        paint_push_button(
+            ui.painter(),
+            rect,
+            label,
+            None,
+            Push {
+                enabled,
+                pressed: selected || (enabled && response.is_pointer_button_down_on()),
+                hovered: response.hovered(),
+                default: false,
+            },
+        );
+    }
+    response
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3400,6 +3840,68 @@ mod tests {
             }
         }
         assert!(hits.is_empty(), "{}", hits.join("\n"));
+    }
+
+    #[test]
+    fn no_raw_egui_controls_in_desktop_ui() {
+        let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+        fn visit(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    visit(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    let norm = path.to_string_lossy().replace('\\', "/");
+                    if norm.ends_with("_tests.rs")
+                        || norm.ends_with("/tests.rs")
+                        || norm.ends_with("/dialog_sweep.rs")
+                        || norm.contains("/tests/")
+                    {
+                        continue;
+                    }
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    // Strip inline #[cfg(test)] module at the bottom of the file.
+                    let prod = text.split("#[cfg(test)]").next().unwrap_or(&text);
+                    out.push((norm, prod.to_string()));
+                }
+            }
+        }
+        const ALLOWED_PRIMITIVES: &[&str] = &[
+            "/dialog_kit.rs",
+            "/chrome.rs",
+            "/details/form.rs",
+            "/context_menu.rs",
+        ];
+        const RAW_CONTROLS: &[&str] = &[
+            "egui::ComboBox::",
+            "egui::DragValue::",
+            "egui::Checkbox::",
+            "egui::Button::new",
+            "ui.checkbox(",
+            "ui.radio_value(",
+            "ui.radio(",
+            "ui.button(",
+            "ui.selectable_label(",
+            "ui.selectable_value(",
+        ];
+        let mut files = vec![];
+        visit(&src, &mut files);
+        let mut hits = vec![];
+        for (path, text) in &files {
+            if ALLOWED_PRIMITIVES.iter().any(|p| path.ends_with(p)) {
+                continue;
+            }
+            for raw in RAW_CONTROLS {
+                if text.contains(raw) {
+                    hits.push(format!("{path}: {raw}"));
+                }
+            }
+        }
+        assert!(
+            hits.is_empty(),
+            "Raw egui controls found:\n{}",
+            hits.join("\n")
+        );
     }
 
     #[test]

@@ -1249,26 +1249,33 @@ impl App {
                 let header = sheet::header_button(ui, "wbs", bar, "Layout: WBS");
                 self.action("wbs_layout", &header);
                 let mut columns = false;
-                egui::Popup::menu(&header).show(|ui| {
-                    let r = ui.button("Columns...");
-                    self.action("wbs_layout_columns", &r);
-                    if r.clicked() {
-                        columns = true;
-                        ui.close();
-                    }
-                    ui.separator();
-                    if ui.button("Expand All").clicked() {
-                        self.views.wbs.collapsed.clear();
-                        self.views.wbs.root_collapsed = false;
-                        ui.close();
-                    }
-                    if ui.button("Collapse All").clicked() {
-                        self.views.wbs.collapsed = self.project.wbs.iter().map(|w| w.id).collect();
-                        ui.close();
-                    }
-                    ui.separator();
-                    ui.checkbox(&mut self.views.wbs.show_details, "WBS Details");
-                });
+                egui::Popup::menu(&header)
+                    .style(chrome::popup_menu_style)
+                    .show(|ui| {
+                        let r = chrome::menu_item(ui, chrome::Item::new("Columns..."));
+                        self.action("wbs_layout_columns", &r);
+                        if r.clicked() {
+                            columns = true;
+                            ui.close();
+                        }
+                        chrome::menu_separator(ui);
+                        if chrome::menu_item(ui, chrome::Item::new("Expand All")).clicked() {
+                            self.views.wbs.collapsed.clear();
+                            self.views.wbs.root_collapsed = false;
+                            ui.close();
+                        }
+                        if chrome::menu_item(ui, chrome::Item::new("Collapse All")).clicked() {
+                            self.views.wbs.collapsed =
+                                self.project.wbs.iter().map(|w| w.id).collect();
+                            ui.close();
+                        }
+                        chrome::menu_separator(ui);
+                        let item =
+                            chrome::Item::new("WBS Details").checked(self.views.wbs.show_details);
+                        if chrome::menu_item(ui, item).clicked() {
+                            self.views.wbs.show_details = !self.views.wbs.show_details;
+                        }
+                    });
                 if columns {
                     self.open_wbs_columns();
                 }

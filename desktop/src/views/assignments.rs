@@ -1704,7 +1704,8 @@ impl App {
                     .max_height(260.)
                     .show(ui, |ui| {
                         for (i, (id, label)) in options.iter().enumerate() {
-                            let response = ui.selectable_label(false, label);
+                            let response =
+                                crate::dialog_kit::flow_selectable(ui, false, label, 290.);
                             self.action(&format!("assignment_pick_item_{i}"), &response);
                             if response.clicked() {
                                 chosen = Some(*id);

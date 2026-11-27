@@ -16,11 +16,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/OpenXER/openxer/releases/latest/download/OpenXER-0.1.1-setup.exe">
+  <a href="https://github.com/OpenXER/openxer/releases/latest/download/OpenXER-0.1.2-setup.exe">
     <img alt="Download for Windows (.exe)" src="https://img.shields.io/badge/Download%20for%20Windows-.exe%20installer-0078d7?style=for-the-badge&logo=windows">
   </a>
   &nbsp;
-  <a href="https://github.com/OpenXER/openxer/releases/latest/download/OpenXER-0.1.1-x86_64.AppImage">
+  <a href="https://github.com/OpenXER/openxer/releases/latest/download/OpenXER-0.1.2-x86_64.AppImage">
     <img alt="Download for Linux (AppImage)" src="https://img.shields.io/badge/Download%20for%20Linux-AppImage-e95420?style=for-the-badge&logo=linux&logoColor=white">
   </a>
 </p>
@@ -240,8 +240,8 @@ Download directly from the **[Latest Release](https://github.com/OpenXER/openxer
 
 | Platform | Recommended download | Portable download |
 |---|---|---|
-| **Windows 10/11 (64-bit)** | [**OpenXER-0.1.1-setup.exe**](https://github.com/OpenXER/openxer/releases/latest/download/OpenXER-0.1.1-setup.exe) (installer, no admin needed) | [OpenXER-0.1.1-windows-x64.zip](https://github.com/OpenXER/openxer/releases/latest/download/OpenXER-0.1.1-windows-x64.zip) |
-| **Linux (x86_64, X11/Wayland)** | [**OpenXER-0.1.1-x86_64.AppImage**](https://github.com/OpenXER/openxer/releases/latest/download/OpenXER-0.1.1-x86_64.AppImage) (single file, `chmod +x` and run) | [OpenXER-0.1.1-linux-x86_64.tar.gz](https://github.com/OpenXER/openxer/releases/latest/download/OpenXER-0.1.1-linux-x86_64.tar.gz) |
+| **Windows 10/11 (64-bit)** | [**OpenXER-0.1.2-setup.exe**](https://github.com/OpenXER/openxer/releases/latest/download/OpenXER-0.1.2-setup.exe) (installer, no admin needed) | [OpenXER-0.1.2-windows-x64.zip](https://github.com/OpenXER/openxer/releases/latest/download/OpenXER-0.1.2-windows-x64.zip) |
+| **Linux (x86_64, X11/Wayland)** | [**OpenXER-0.1.2-x86_64.AppImage**](https://github.com/OpenXER/openxer/releases/latest/download/OpenXER-0.1.2-x86_64.AppImage) (single file, `chmod +x` and run) | [OpenXER-0.1.2-linux-x86_64.tar.gz](https://github.com/OpenXER/openxer/releases/latest/download/OpenXER-0.1.2-linux-x86_64.tar.gz) |
 
 Verify checksums with [SHA256SUMS.txt](https://github.com/OpenXER/openxer/releases/latest/download/SHA256SUMS.txt).
 

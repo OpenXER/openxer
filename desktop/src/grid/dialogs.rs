@@ -2378,23 +2378,34 @@ impl App {
                     ui.end_row();
                 }
                 ui.label("Look in:");
-                egui::ComboBox::from_id_salt("find_column")
-                    .selected_text(
-                        f.column
-                            .as_ref()
-                            .and_then(|c| shown.iter().find(|(id, _)| id == c))
-                            .map_or("All displayed columns".to_string(), |(_, t)| t.clone()),
+                let look_in = f
+                    .column
+                    .as_ref()
+                    .and_then(|c| shown.iter().find(|(id, _)| id == c))
+                    .map_or("All displayed columns".to_string(), |(_, t)| t.clone());
+                crate::dialog_kit::flow_combo_with(ui, "find_column", 220., &look_in, true, |ui| {
+                    if crate::dialog_kit::flow_selectable(
+                        ui,
+                        f.column.is_none(),
+                        "All displayed columns",
+                        216.,
                     )
-                    .width(220.)
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut f.column, None, "All displayed columns");
-                        for (id, title) in shown {
-                            ui.selectable_value(&mut f.column, Some(id.clone()), title);
+                    .clicked()
+                    {
+                        f.column = None;
+                        ui.close();
+                    }
+                    for (id, title) in shown {
+                        let on = f.column.as_ref() == Some(id);
+                        if crate::dialog_kit::flow_selectable(ui, on, title, 216.).clicked() {
+                            f.column = Some(id.clone());
+                            ui.close();
                         }
-                    });
+                    }
+                });
                 ui.end_row();
                 ui.label("");
-                let r = ui.checkbox(&mut f.match_case, "Match case");
+                let r = crate::dialog_kit::flow_checkbox(ui, &mut f.match_case, "Match case", true);
                 self.action("find_match_case", &r);
                 ui.end_row();
             });

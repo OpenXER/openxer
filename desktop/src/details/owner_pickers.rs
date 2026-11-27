@@ -174,18 +174,23 @@ impl App {
                     .iter()
                     .find(|(id, _)| Some(*id) == picker.type_id)
                     .map_or("", |(_, n)| n.as_str());
-                egui::ComboBox::from_id_salt("project_code_pick_type")
-                    .selected_text(shown)
-                    .width(220.)
-                    .show_ui(ui, |ui| {
+                crate::dialog_kit::flow_combo_with(
+                    ui,
+                    "project_code_pick_type",
+                    220.,
+                    shown,
+                    true,
+                    |ui| {
                         for (id, name) in &types {
                             let on = Some(*id) == picker.type_id;
-                            if ui.selectable_label(on, name).clicked() {
+                            if crate::dialog_kit::flow_selectable(ui, on, name, 216.).clicked() {
                                 picker.type_id = Some(*id);
                                 picker.selected = None;
+                                ui.close();
                             }
                         }
-                    });
+                    },
+                );
             });
             let out = app.assign_list(
                 ui,
